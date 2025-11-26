@@ -40,7 +40,7 @@
         <h1 class="text-sm font-bold text-gray-800 mb-4 ml-1">보호자 모드</h1>
         
         <div class="flex gap-2">
-          <button class="flex-1 bg-orange-500 text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-600 transition">
+          <button class="flex-1 bg-[#FF6B00] text-white font-bold py-3 rounded-lg shadow-md hover:bg-orange-600 transition">
             메뉴 관리
           </button>
           <button class="flex-1 bg-gray-100 text-gray-500 font-medium py-3 rounded-lg hover:bg-gray-200 transition">
@@ -49,7 +49,7 @@
         </div>
       </header>
 
-      <button class="w-full bg-orange-500 text-white text-lg font-bold py-4 rounded-xl shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-orange-600 transition">
+      <button class="w-full bg-[#FF6B00]-500 text-white text-lg font-bold py-4 rounded-xl shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-orange-600 transition">
         <span>+</span> 새 메뉴 추가
       </button>
 
@@ -63,7 +63,7 @@
 
             <div class="flex-1 flex flex-col justify-center">
               <h3 class="text-gray-900 font-bold text-lg leading-tight">{item.name}</h3>
-              <p class="text-orange-500 font-bold mt-1">{item.price}</p>
+              <p class="text-[#FF6B00]-500 font-bold mt-1">{item.price}</p>
             </div>
 
             <div class="flex flex-col gap-2">
