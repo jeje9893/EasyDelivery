@@ -3,4 +3,4 @@
 </script>
 
 <h1>{name}</h1>
-<p>이 페이지는 recommend 페이지입니다aa.</p>
+<p>이 페이지는 recommend 페이지입니다aaㅁㅁㅁ.</p>
