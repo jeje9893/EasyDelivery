@@ -4,7 +4,6 @@
 
 <div class="landing-container">
   <header class="landing-header">
-    <a href="/" class="home-btn">← 홈</a>
     <h1 class="app-title">노인 배달 서비스</h1>
     <p class="app-subtitle">간단하고 쉬운 음식 주문</p>
   </header>
@@ -45,31 +44,9 @@
   }
 
   .landing-header {
-    position: relative;
     text-align: center;
     padding: 50px 20px 30px;
     color: white;
-  }
-
-  .home-btn {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    border: 2px solid white;
-    padding: 10px 16px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: 1rem;
-    transition: all 0.3s;
-    cursor: pointer;
-  }
-
-  .home-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: translateX(-2px);
   }
 
   .app-title {

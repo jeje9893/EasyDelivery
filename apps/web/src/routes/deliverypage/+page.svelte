@@ -600,7 +600,7 @@
     
     <!-- AI 음성 주문 버튼 -->
     <button class="ai-voice-btn" on:click={openAIVoiceMode} title="AI 음성 주문">
-      <img src="/images/phone-icon.svg" alt="전화" class="phone-icon" />
+      <img src="/images/phone-icon.png" alt="전화" class="phone-icon" />
     </button>
   </header>
 
@@ -781,7 +781,7 @@
         {/if}
       </div>
       <div class="cart-summary">
-        <div class="cart-text">AI 전화주문</div>
+        <div class="cart-text">주문하기</div>
         <div class="cart-total">{totalAmount.toLocaleString()}원</div>
       </div>
     </footer>
@@ -909,7 +909,7 @@
 
   /* ---------- AI Voice Button ---------- */
   .ai-voice-btn {
-    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    background: #f0f8f0;
     border: 3px solid #81c784;
     color: white;
     padding: 6px;
@@ -936,8 +936,8 @@
   }
 
   .phone-icon {
-    width: 24px;
-    height: 24px;
+    width: 36px;
+    height: 36px;
     stroke: white;
   }
 
