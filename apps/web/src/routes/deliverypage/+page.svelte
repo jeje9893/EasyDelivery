@@ -437,7 +437,6 @@
       selectedCategory = owningRestaurant.category;
       selectedRestaurant = owningRestaurant;
       addToCart(menu);
-      menuTab = '내 메뉴';
       console.log('✅ 추천 메뉴 처리 완료:', {
         restaurant: owningRestaurant.name,
         menu: menu.name
@@ -479,7 +478,6 @@
     selectedCategory = targetRestaurant.category;
     selectedRestaurant = targetRestaurant;
     addToCart(newMenu);
-    menuTab = '내 메뉴';
     
     console.log('✅ 추천 메뉴 처리 완료:', {
       store: targetRestaurant.name,
