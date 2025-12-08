@@ -516,13 +516,17 @@
     if (!foundRestaurant) {
       foundRestaurant = restaurants.find((r: Restaurant) => 
         r.name.includes(userInput) || userInput.includes(r.name)
-      );
+      ) || null;
     }
 
     let response = '';
 
     if (foundMenu && foundRestaurant) {
-      response = `${foundRestaurant.name}의 ${foundMenu.name}을 찾았습니다. ${foundMenu.price.toLocaleString()}원입니다. 주문하시겠습니까?`;
+      // 클로저 내부에서 사용할 변수를 const로 고정
+      const confirmedMenu = foundMenu;
+      const confirmedRestaurant = foundRestaurant;
+      
+      response = `${confirmedRestaurant.name}의 ${confirmedMenu.name}을 찾았습니다. ${confirmedMenu.price.toLocaleString()}원입니다. 주문하시겠습니까?`;
       voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response }];
       speakAI(response);
       
@@ -535,22 +539,22 @@
           const confirmTranscript = event.results[0][0].transcript.toLowerCase();
           voiceChatHistory = [...voiceChatHistory, { role: 'user', message: confirmTranscript }];
           
-          if (confirmTranscript.includes('주문') || confirmTranscript.includes('네') || confirmTranscript.includes('맞') || confirmTranscript.includes('좋') || confirmTranscript.includes('기') || confirmTranscript.includes('해')) {
-            // 주문 확정
-            if (foundMenu && foundRestaurant) {
-              selectedRestaurant = foundRestaurant;
-              selectedCategory = foundRestaurant.category;
-              addToCart(foundMenu);
-              
-              const confirmMsg = `${foundMenu.name}을 장바구니에 담았습니다. 장바구니로 이동합니다.`;
-              voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: confirmMsg }];
-              speakAI(confirmMsg);
-              
-              setTimeout(() => {
-                closeAIVoiceMode();
-                currentView = 'cart';
-              }, 2000);
-            }
+          if (confirmTranscript.includes('주문') || confirmTranscript.includes('네') || 
+              confirmTranscript.includes('맞') || confirmTranscript.includes('좋') || 
+              confirmTranscript.includes('기') || confirmTranscript.includes('해')) {
+            // 주문 확정 - const로 고정된 변수 사용
+            selectedRestaurant = confirmedRestaurant;
+            selectedCategory = confirmedRestaurant.category;
+            addToCart(confirmedMenu);
+            
+            const confirmMsg = `${confirmedMenu.name}을 장바구니에 담았습니다. 장바구니로 이동합니다.`;
+            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: confirmMsg }];
+            speakAI(confirmMsg);
+            
+            setTimeout(() => {
+              closeAIVoiceMode();
+              currentView = 'cart';
+            }, 2000);
           } else {
             // 주문 취소
             const cancelMsg = '주문이 취소되었습니다. 다른 메뉴를 찾아드릴까요?';
