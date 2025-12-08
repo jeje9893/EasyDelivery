@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fly, fade, slide } from 'svelte/transition';
   import { onMount } from 'svelte';
+  import { recommendedMenus } from '$lib/recommendedMenus';
 
   // 메뉴 항목 타입
   interface Menu {
@@ -9,6 +10,16 @@
     price: number;
     isRecommended: boolean;
     image?: string;
+  }
+
+  // 추천 메뉴 타입
+  interface RecommendedMenu {
+    id: number;
+    store: string;
+    menu: string;
+    price: number;
+    emoji: string;
+    category: string;
   }
 
   // 식당 타입
@@ -141,9 +152,13 @@
   let isListening = false;
   let aiSpeechSynthesis: SpeechSynthesisUtterance | null = null;
 
+  // 랜덤 추천 메뉴 4개 선택 상태
+  let randomRecommendedMenus: RecommendedMenu[] = [];
+
   // onMount: 페이지 로드 시 localStorage에서 주소, 가게, 메뉴 불러오기
   onMount(() => {
     loadGuardianSettings();
+    selectRandomRecommendedMenus();
     
     // 같은 탭 내에서 localStorage 변경 감지
     const handleStorageChange = () => {
@@ -167,6 +182,13 @@
       window.removeEventListener('focus', handleFocus);
     };
   });
+
+  // 랜덤 추천 메뉴 4개 선택 함수
+  function selectRandomRecommendedMenus() {
+    const shuffled = [...recommendedMenus].sort(() => Math.random() - 0.5);
+    randomRecommendedMenus = shuffled.slice(0, 4);
+    console.log('🎲 랜덤 추천 메뉴 선택:', randomRecommendedMenus.map(m => m.menu));
+  }
 
   // 보호자 설정 로드 함수
   function loadGuardianSettings() {
@@ -415,7 +437,7 @@
       selectedCategory = owningRestaurant.category;
       selectedRestaurant = owningRestaurant;
       addToCart(menu);
-      menuTab = '전체';
+      menuTab = '내 메뉴';
       console.log('✅ 추천 메뉴 처리 완료:', {
         restaurant: owningRestaurant.name,
         menu: menu.name
@@ -423,6 +445,46 @@
     } else {
       console.log('❌ 해당 메뉴의 식당을 찾을 수 없음');
     }
+  }
+
+  // 랜덤 추천 메뉴 클릭 핸들러
+  function handleRecommendedMenuClick(recommendedMenu: RecommendedMenu) {
+    console.log('⚡ 추천 메뉴 클릭:', recommendedMenu.menu);
+    
+    // 같은 이름의 식당 찾기 또는 새로운 식당 생성
+    let targetRestaurant = restaurants.find(r => r.name === recommendedMenu.store);
+    
+    if (!targetRestaurant) {
+      // 새로운 식당 생성
+      const newRestaurantId = Math.max(0, ...restaurants.map(r => r.id)) + 1;
+      targetRestaurant = {
+        id: newRestaurantId,
+        name: recommendedMenu.store,
+        category: recommendedMenu.category,
+        img: recommendedMenu.emoji,
+        menus: []
+      };
+      restaurants = [...restaurants, targetRestaurant];
+    }
+
+    // 메뉴 생성 및 장바구니에 추가
+    const newMenu: Menu = {
+      id: recommendedMenu.id,
+      name: recommendedMenu.menu,
+      price: recommendedMenu.price,
+      isRecommended: true,
+      image: recommendedMenu.emoji
+    };
+
+    selectedCategory = targetRestaurant.category;
+    selectedRestaurant = targetRestaurant;
+    addToCart(newMenu);
+    menuTab = '내 메뉴';
+    
+    console.log('✅ 추천 메뉴 처리 완료:', {
+      store: targetRestaurant.name,
+      menu: recommendedMenu.menu
+    });
   }
 
   // AI 음성 주문 관련 함수
@@ -647,22 +709,44 @@
         </button>
       </div>
 
-      <!-- 추천 메뉴 그리드 (2x2) -->
-      <div class="recommended-grid" in:fade={{ duration: 300 }}>
-        {#each allRecommendedMenus.slice(0, 4) as menu, idx}
-          <button
-            class="recommended-card"
-            class:highlight={idx === 0}
-            on:click={() => handleQuickMenuClick(menu)}
-          >
-            <div class="card-image">{menu.image || '🍽️'}</div>
-            <div class="card-info">
-              <div class="card-name">{menu.name}</div>
-              <div class="card-price">{menu.price.toLocaleString()}원</div>
-            </div>
-          </button>
-        {/each}
-      </div>
+      <!-- 내 메뉴 탭 - 기존 추천 메뉴 (restaurants에서) -->
+      {#if menuTab === '내 메뉴'}
+        <div class="recommended-grid" in:fade={{ duration: 300 }}>
+          {#each allRecommendedMenus.slice(0, 4) as menu, idx}
+            <button
+              class="recommended-card"
+              class:highlight={idx === 0}
+              on:click={() => handleQuickMenuClick(menu)}
+            >
+              <div class="card-image">{menu.image || '🍽️'}</div>
+              <div class="card-info">
+                <div class="card-name">{menu.name}</div>
+                <div class="card-price">{menu.price.toLocaleString()}원</div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- 추천 메뉴 탭 - 랜덤 추천 메뉴 -->
+      {#if menuTab === '추천 메뉴'}
+        <div class="recommended-grid" in:fade={{ duration: 300 }}>
+          {#each randomRecommendedMenus as menu, idx}
+            <button
+              class="recommended-card"
+              class:highlight={idx === 0}
+              on:click={() => handleRecommendedMenuClick(menu)}
+            >
+              <div class="card-image">{menu.emoji}</div>
+              <div class="card-info">
+                <div class="card-store">{menu.store}</div>
+                <div class="card-name">{menu.menu}</div>
+                <div class="card-price">{menu.price.toLocaleString()}원</div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      {/if}
 
     <!-- 장바구니 화면 -->
     {:else if currentView === 'cart'}
@@ -715,8 +799,8 @@
         </div>
 
         <div class="payment-info">
-          <label>이용자 내용 (선택사항)</label>
-          <textarea placeholder="https://example.com/myUser=USER&action=..."  class="user-info-input"></textarea>
+          <label>요청사항 (선택사항)</label>
+          <textarea placeholder="덜 맵게 해주세요"  class="user-info-input"></textarea>
         </div>
 
         <div class="cart-actions-bottom">
@@ -759,7 +843,10 @@
                 <div class="menu-name">{menu.name}</div>
                 <div class="menu-price">{menu.price.toLocaleString()}원</div>
               </div>
-              <button class="add-btn" on:click={() => addToCart(menu)}>
+              <button class="add-btn" on:click={() => {
+                addToCart(menu);
+                menuTab = '내 메뉴';
+              }}>
                 담기 +
               </button>
             </div>
@@ -1033,6 +1120,12 @@
   .card-image {
     font-size: 4rem;
     margin-bottom: 15px;
+  }
+  .card-store {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #999;
+    margin-bottom: 4px;
   }
   .card-name {
     font-size: 1.4rem;
