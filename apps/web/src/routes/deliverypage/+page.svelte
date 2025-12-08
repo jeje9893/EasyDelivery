@@ -710,7 +710,7 @@
       <!-- 내 메뉴 탭 - 기존 추천 메뉴 (restaurants에서) -->
       {#if menuTab === '내 메뉴'}
         <div class="recommended-grid" in:fade={{ duration: 300 }}>
-          {#each allRecommendedMenus.slice(0, 4) as menu, idx}
+          {#each allRecommendedMenus as menu, idx}
             <button
               class="recommended-card"
               class:highlight={idx === 0}
