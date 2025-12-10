@@ -1012,7 +1012,7 @@
     
     <!-- 타이틀 버튼 (홈으로 이동) -->
     <button class="title-btn" on:click={goHome}>
-      <h1 class="title-text">Simple Delivery App</h1>
+      <h1 class="title-text">간편주문</h1>
     </button>
     
     <!-- AI 음성 주문 버튼 -->
@@ -1107,7 +1107,7 @@
     {:else if currentView === 'cart'}
       <div class="cart-header" in:fade>
         <button class="back-btn" on:click={() => currentView = 'home'}>← 뒤로</button>
-        <h2>보관함 보드</h2>
+        <h2>장바구니</h2>
       </div>
 
       <div class="cart-list" in:fly={{ y: 200, duration: 400 }}>
@@ -1312,19 +1312,20 @@
 
   /* ---------- Header ---------- */
   .header {
-    background-color: #000000;
+    background: linear-gradient(135deg, #ff9800 0%, #ff6b35 100%);
     padding: 15px 20px;
     color: white;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 20px;
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
   }
 
   .home-btn {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.2);
     color: white;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.4);
     padding: 8px 14px;
     border-radius: 6px;
     font-weight: 700;
@@ -1336,8 +1337,8 @@
   }
 
   .home-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
     transform: translateX(-2px);
   }
 
