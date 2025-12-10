@@ -138,8 +138,8 @@
   let selectedCategory: string = "";
   let selectedRestaurant: Restaurant | null = null;
 
-  // 장바구니: 수량 조절 가능하도록 구조 유지
-  let cart: { name: string; price: number; qty: number }[] = [];
+  // 장바구니: 이모지 포함하도록 타입 수정
+  let cart: { name: string; price: number; qty: number; emoji?: string }[] = [];
 
   let showPaymentAlert = false;
   let menuTab: '내 메뉴' | '추천 메뉴' | '전체' | '추천' = '내 메뉴';
@@ -322,12 +322,10 @@
     return true;
   }
 
-  // 장바구니에 담기 (동일 메뉴면 수량 증가)
+  // 장바구니에 담기 (이모지 포함)
   function addToCart(menu: Menu) {
     console.log('➕ addToCart 호출:', menu.name);
     console.log('현재 장바구니:', cart);
-    // 주소 체크 제거 - 바로 추가 가능하도록
-    // if (!checkAddressBeforeAction()) return;
 
     const existingItem = cart.find(item => item.name === menu.name);
     if (existingItem) {
@@ -335,7 +333,12 @@
       cart = [...cart];
       console.log('✅ 수량 증가:', menu.name, '→', existingItem.qty);
     } else {
-      cart = [...cart, { name: menu.name, price: menu.price, qty: 1 }];
+      cart = [...cart, { 
+        name: menu.name, 
+        price: menu.price, 
+        qty: 1,
+        emoji: menu.image || '🍽️'
+      }];
       console.log('✅ 새 항목 추가:', menu.name);
     }
     console.log('업데이트된 장바구니:', cart);
@@ -1111,10 +1114,16 @@
       </div>
 
       <div class="cart-list" in:fly={{ y: 200, duration: 400 }}>
-        <h3>주문 메뉴</h3>
+        <div class="cart-list-header">
+          <h3>주문 메뉴</h3>
+          <button class="clear-cart-btn" on:click={resetCart}>
+            🗑️ 장바구니 비우기
+          </button>
+        </div>
+        
         {#each cart as item}
           <div class="cart-item">
-            <img src="https://via.placeholder.com/60" alt={item.name} class="cart-item-img" />
+            <div class="cart-item-emoji">{item.emoji || '🍽️'}</div>
             <div class="cart-item-info">
               <div class="cart-item-name">{item.name}</div>
               <div class="cart-item-price">{item.price.toLocaleString()}원</div>
@@ -1155,12 +1164,7 @@
 
         <div class="payment-info">
           <label>요청사항 (선택사항)</label>
-          <textarea placeholder="덜 맵게 해주세요"  class="user-info-input"></textarea>
-        </div>
-
-        <div class="cart-actions-bottom">
-          <button class="cancel-btn" on:click={resetCart}>취소</button>
-          <button class="confirm-btn" on:click={handlePayment}>주문</button>
+          <textarea placeholder="덜 맵게 해주세요" class="user-info-input"></textarea>
         </div>
       </div>
 
@@ -1213,8 +1217,20 @@
     {/if}
   </main>
 
-  <!-- 하단 고정 장바구니 바 -->
-  {#if currentView !== 'cart'}
+  <!-- 하단 고정 장바구니 바 / 주문하기 바 -->
+  {#if currentView === 'cart'}
+    <!-- 장바구니 화면에서는 주문하기 버튼 표시 -->
+    <footer class="footer-cart order-mode" on:click={handlePayment}>
+      <div class="cart-icon-wrapper">
+        <span class="cart-icon">🛍️</span>
+      </div>
+      <div class="cart-summary">
+        <div class="cart-text">주문하기</div>
+        <div class="cart-total">{totalAmount.toLocaleString()}원</div>
+      </div>
+    </footer>
+  {:else if totalCount > 0}
+    <!-- 다른 화면에서는 장바구니 버튼 표시 (장바구니에 물건이 있을 때만) -->
     <footer class="footer-cart" class:active={totalCount > 0} on:click={viewCart}>
       <div class="cart-icon-wrapper">
         <span class="cart-icon">🛒</span>
@@ -1223,7 +1239,7 @@
         {/if}
       </div>
       <div class="cart-summary">
-        <div class="cart-text">주문하기</div>
+        <div class="cart-text">장바구니</div>
         <div class="cart-total">{totalAmount.toLocaleString()}원</div>
       </div>
     </footer>
@@ -1509,9 +1525,28 @@
     display: flex;
     align-items: center;
     gap: 20px;
-    padding: 20px 40px;
+    padding: 20px 20px;
     border-bottom: 2px solid #eee;
   }
+
+  .cart-header .back-btn {
+    background: #f5f5f5;
+    color: #666;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+  }
+
+  .cart-header .back-btn:hover {
+    background: #e8e8e8;
+    color: #333;
+  }
+
   .cart-header h2 {
     font-size: 1.8rem;
     font-weight: 800;
@@ -1520,16 +1555,46 @@
   }
 
   .cart-list {
-    padding: 20px 40px;
+    padding: 20px 20px 160px 20px;
     max-width: 800px;
     margin: 0 auto;
-    padding-bottom: 140px;
   }
-  .cart-list h3 {
+
+  .cart-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .cart-list-header h3 {
     font-size: 1.4rem;
     font-weight: 700;
     color: #333;
-    margin-bottom: 20px;
+    margin: 0;
+  }
+
+  .clear-cart-btn {
+    background: #f5f5f5;
+    color: #ff6b35;
+    border: 2px solid #ff6b35;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+  }
+
+  .clear-cart-btn:hover {
+    background: #ff6b35;
+    color: white;
+    transform: scale(1.05);
+  }
+
+  .clear-cart-btn:active {
+    transform: scale(0.95);
   }
 
   .cart-item {
@@ -1542,61 +1607,21 @@
     border-radius: 12px;
     margin-bottom: 15px;
   }
-  .cart-item-img {
+
+  .cart-item-emoji {
+    font-size: 3rem;
     width: 60px;
     height: 60px;
-    border-radius: 10px;
-    object-fit: cover;
-    background: #f5f5f5;
-  }
-  .cart-item-info {
-    flex: 1;
-  }
-  .cart-item-name {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #333;
-    margin-bottom: 5px;
-  }
-  .cart-item-price {
-    font-size: 1.1rem;
-    color: #ff6b35;
-    font-weight: 600;
-  }
-  .cart-item-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: #f5f5f5;
-    padding: 5px 10px;
-    border-radius: 20px;
-  }
-  .qty-btn {
-    width: 30px;
-    height: 30px;
-    border: none;
-    background: white;
-    border-radius: 50%;
-    font-size: 1.2rem;
-    font-weight: 700;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    background: #f5f5f5;
+    border-radius: 10px;
+    flex-shrink: 0;
   }
-  .qty-display {
-    font-size: 1.2rem;
-    font-weight: 700;
-    min-width: 30px;
-    text-align: center;
-  }
-  .remove-btn {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 5px;
+
+  .cart-item-img {
+    display: none;
   }
 
   .order-details {
@@ -1646,28 +1671,7 @@
   }
 
   .cart-actions-bottom {
-    display: flex;
-    gap: 15px;
-    margin-top: 30px;
-  }
-  .cancel-btn, .confirm-btn {
-    flex: 1;
-    padding: 18px;
-    border: none;
-    border-radius: 12px;
-    font-size: 1.4rem;
-    font-weight: 800;
-    cursor: pointer;
-    transition: all 0.3s;
-  }
-  .cancel-btn {
-    background: #f5f5f5;
-    color: #666;
-  }
-  .confirm-btn {
-    background: #ff6b35;
-    color: white;
-    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+    display: none;
   }
 
   /* 메뉴 탭 */
@@ -1792,13 +1796,51 @@
     transition: all 0.3s;
     z-index: 100;
     max-width: 85%;
-    min-height: 44px;
+    min-height: 56px;
   }
 
   .footer-cart.active {
     box-shadow: 0 4px 25px rgba(255, 152, 0, 0.4), 
                 0 0 0 3px rgba(255, 152, 0, 0.6),
                 0 0 20px rgba(255, 184, 77, 0.3);
+  }
+
+  .footer-cart.order-mode {
+    background: linear-gradient(135deg, #ff6b35 0%, #ff9800 100%);
+    color: white;
+    box-shadow: 0 4px 25px rgba(255, 107, 53, 0.5), 
+                0 0 0 3px rgba(255, 107, 53, 0.6),
+                0 0 20px rgba(255, 152, 0, 0.4);
+    min-height: 70px;
+    padding: 14px 28px;
+  }
+
+  .footer-cart.order-mode:hover {
+    box-shadow: 0 6px 30px rgba(255, 107, 53, 0.6), 
+                0 0 0 3px rgba(255, 107, 53, 0.7),
+                0 0 25px rgba(255, 152, 0, 0.5);
+    transform: translateX(-50%) translateY(-3px);
+  }
+
+  .footer-cart.order-mode .cart-summary {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+
+  .footer-cart.order-mode .cart-text {
+    color: white;
+    font-size: 1.1rem;
+  }
+
+  .footer-cart.order-mode .cart-total {
+    color: white;
+    font-size: 1.5rem;
+  }
+
+  .footer-cart.order-mode .cart-icon {
+    font-size: 2.2rem;
   }
 
   .footer-cart:hover {
@@ -1819,9 +1861,11 @@
     align-items: center;
     justify-content: center;
   }
+
   .cart-icon {
     font-size: 1.8rem;
   }
+
   .cart-badge {
     position: absolute;
     top: -8px;
@@ -1844,12 +1888,12 @@
     text-align: right;
   }
   .cart-text {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: #999;
     line-height: 1.2;
   }
   .cart-total {
-    font-size: 1.3rem;
+    font-size: 1.35rem;
     font-weight: 800;
     color: #ff6b35;
     line-height: 1.2;
@@ -1912,33 +1956,11 @@
     width: 90%;
     max-width: 500px;
     height: 600px;
+    max-height: 90vh;
     display: flex;
     flex-direction: column;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     position: relative;
-  }
-
-  .ai-close-btn {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    background: none;
-    border: none;
-    font-size: 1.8rem;
-    cursor: pointer;
-    color: #999;
-    padding: 0;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s;
-  }
-
-  .ai-close-btn:hover {
-    color: #333;
-    transform: scale(1.1);
   }
 
   .ai-header {
@@ -1947,6 +1969,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
   }
 
   .ai-header h2 {
@@ -1969,6 +1992,19 @@
     color: #4caf50;
   }
 
+  .ai-status.listening .listening-dot {
+    width: 8px;
+    height: 8px;
+    background: #4caf50;
+    border-radius: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
   .processing-spinner {
     width: 8px;
     height: 8px;
@@ -1989,6 +2025,7 @@
     display: flex;
     flex-direction: column;
     gap: 15px;
+    min-height: 0;
   }
 
   .chat-message {
@@ -2030,6 +2067,7 @@
     border-top: 2px solid #f0f0f0;
     display: flex;
     gap: 10px;
+    flex-shrink: 0;
   }
 
   .listen-btn {
@@ -2073,5 +2111,66 @@
   .close-modal-btn:hover {
     background: #e0e0e0;
     color: #333;
+  }
+
+  /* 모바일 반응형 */
+  @media (max-width: 768px) {
+    .cart-header {
+      padding: 16px;
+    }
+
+    .cart-list {
+      padding: 16px 16px 140px 16px;
+    }
+
+    .cart-list-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .cart-list-header h3 {
+      font-size: 1.3rem;
+    }
+
+    .clear-cart-btn {
+      font-size: 0.9rem;
+      padding: 7px 14px;
+    }
+
+    .cart-item-emoji {
+      font-size: 2.5rem;
+      width: 50px;
+      height: 50px;
+    }
+
+    /* ...existing code... */
+  }
+
+  @media (max-width: 480px) {
+    .cart-header {
+      padding: 12px;
+    }
+
+    .cart-list {
+      padding: 12px 12px 120px 12px;
+    }
+
+    .cart-list-header h3 {
+      font-size: 1.2rem;
+    }
+
+    .clear-cart-btn {
+      font-size: 0.85rem;
+      padding: 6px 12px;
+    }
+
+    .cart-item-emoji {
+      font-size: 2rem;
+      width: 45px;
+      height: 45px;
+    }
+
+    /* ...existing code... */
   }
 </style>
