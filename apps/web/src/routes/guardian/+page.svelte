@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { recommendedMenus } from '$lib/recommendedMenus';
 
   interface Menu {
     id: number;
@@ -35,6 +36,10 @@
   let savedAddresses: Address[] = [];
   let paymentMethods: PaymentMethod[] = [];
   let selectedRestaurant: Restaurant | null = null;
+
+  let showRecommendedMenuModal = false;
+  let showAddNewRestaurantModal = false;
+  let currentRestaurantForMenu: Restaurant | null = null;
 
   onMount(() => {
     loadSettings();
@@ -96,7 +101,15 @@
   }
 
   // 식당 관련 함수
+  function openMenuSelectionModal() {
+    showRecommendedMenuModal = true;
+  }
+
   function addRestaurant() {
+    showAddNewRestaurantModal = true;
+  }
+
+  function createNewRestaurant() {
     const name = prompt('새 가게 이름:');
     if (!name) return;
     
@@ -107,16 +120,26 @@
     if (!img) return;
     
     const newId = restaurants.length > 0 ? Math.max(...restaurants.map(r => r.id)) + 1 : 1;
-    restaurants = [...restaurants, {
+    const newRestaurant = {
       id: newId,
       name,
       category,
       img,
       menus: []
-    }];
+    };
     
+    restaurants = [...restaurants, newRestaurant];
     console.log('➕ 새 가게 추가:', name);
-    saveAllSettings();
+    
+    showAddNewRestaurantModal = false;
+    
+    // 메뉴 추가 여부 확인
+    if (confirm('이 가게에 메뉴를 추가하시겠습니까?')) {
+      currentRestaurantForMenu = newRestaurant;
+      showRecommendedMenuModal = true;
+    } else {
+      saveAllSettings();
+    }
   }
 
   function deleteRestaurant(id: number) {
@@ -128,39 +151,6 @@
       console.log('🗑️ 가게 삭제:', restaurant.name);
       saveAllSettings();
     }
-  }
-
-  function addMenu(restaurant: Restaurant) {
-    const name = prompt('메뉴 이름:');
-    if (!name) return;
-    
-    const priceStr = prompt('가격:');
-    if (!priceStr) return;
-    
-    const price = parseInt(priceStr);
-    if (isNaN(price)) {
-      alert('올바른 가격을 입력하세요.');
-      return;
-    }
-    
-    const image = prompt('이모지:', '🍽️');
-    const isRecommended = confirm('추천 메뉴로 설정하시겠습니까?');
-    
-    const newId = restaurant.menus.length > 0 
-      ? Math.max(...restaurant.menus.map(m => m.id)) + 1 
-      : 1;
-    
-    restaurant.menus = [...restaurant.menus, {
-      id: newId,
-      name,
-      price,
-      isRecommended,
-      image: image || '🍽️'
-    }];
-    
-    restaurants = [...restaurants];
-    console.log('➕ 새 메뉴 추가:', name, '→', restaurant.name);
-    saveAllSettings();
   }
 
   function deleteMenu(restaurant: Restaurant, menuId: number) {
@@ -183,6 +173,97 @@
       console.log('⭐ 추천 토글:', menu.name, '→', menu.isRecommended);
       saveAllSettings();
     }
+  }
+
+  function addMenuManually() {
+    const name = prompt('메뉴 이름:');
+    if (!name) return;
+    
+    const priceStr = prompt('가격:');
+    if (!priceStr) return;
+    
+    const price = parseInt(priceStr);
+    if (isNaN(price)) {
+      alert('올바른 가격을 입력하세요.');
+      return;
+    }
+    
+    const image = prompt('이모지:', '🍽️');
+    const isRecommended = confirm('추천 메뉴로 설정하시겠습니까?');
+    
+    if (!currentRestaurantForMenu) return;
+    
+    const newId = currentRestaurantForMenu.menus.length > 0 
+      ? Math.max(...currentRestaurantForMenu.menus.map(m => m.id)) + 1 
+      : 1;
+    
+    currentRestaurantForMenu.menus = [...currentRestaurantForMenu.menus, {
+      id: newId,
+      name,
+      price,
+      isRecommended,
+      image: image || '🍽️'
+    }];
+    
+    restaurants = [...restaurants];
+    console.log('➕ 새 메뉴 추가 (직접):', name, '→', currentRestaurantForMenu.name);
+    saveAllSettings();
+    closeRecommendedMenuModal();
+    alert(`✅ "${name}"이(가) 추가되었습니다!`);
+  }
+
+  function addMenuFromRecommended(recommendedMenu: any) {
+    // 같은 이름의 식당 찾기
+    let targetRestaurant = restaurants.find(r => r.name === recommendedMenu.store);
+    
+    if (!targetRestaurant) {
+      // 새로운 식당 생성
+      const newRestaurantId = Math.max(0, ...restaurants.map(r => r.id)) + 1;
+      targetRestaurant = {
+        id: newRestaurantId,
+        name: recommendedMenu.store,
+        category: recommendedMenu.category,
+        img: recommendedMenu.emoji,
+        menus: []
+      };
+      restaurants = [...restaurants, targetRestaurant];
+      console.log('➕ 새 가게 자동 생성:', recommendedMenu.store);
+    }
+    
+    const newId = targetRestaurant.menus.length > 0 
+      ? Math.max(...targetRestaurant.menus.map(m => m.id)) + 1 
+      : 1;
+    
+    targetRestaurant.menus = [...targetRestaurant.menus, {
+      id: newId,
+      name: recommendedMenu.menu,
+      price: recommendedMenu.price,
+      isRecommended: true,
+      image: recommendedMenu.emoji
+    }];
+    
+    restaurants = [...restaurants];
+    console.log('➕ 새 메뉴 추가 (추천):', recommendedMenu.menu, '→', targetRestaurant.name);
+    saveAllSettings();
+    
+    // 모달 닫기
+    closeRecommendedMenuModal();
+    
+    alert(`✅ "${recommendedMenu.store}"에 "${recommendedMenu.menu}"이(가) 추가되었습니다!`);
+  }
+
+  function selectExistingRestaurantForMenu(restaurant: Restaurant) {
+    currentRestaurantForMenu = restaurant;
+    showRecommendedMenuModal = true;
+  }
+
+  function closeRecommendedMenuModal() {
+    showRecommendedMenuModal = false;
+    currentRestaurantForMenu = null;
+  }
+
+  function closeAddNewRestaurantModal() {
+    showAddNewRestaurantModal = false;
   }
 
   // 주소 관련 함수
@@ -273,7 +354,7 @@
   <section class="guardian-section">
     <div class="section-header">
       <h2>🏪 식당 및 메뉴 관리</h2>
-      <button class="add-btn" on:click={addRestaurant}>+ 가게 추가</button>
+      <button class="add-btn" on:click={openMenuSelectionModal}>+ 메뉴 추가</button>
     </div>
 
     <div class="restaurants-list">
@@ -288,7 +369,7 @@
               </div>
             </div>
             <div class="restaurant-actions">
-              <button class="icon-btn" on:click={() => addMenu(restaurant)}>➕</button>
+              <button class="icon-btn" on:click={() => selectExistingRestaurantForMenu(restaurant)}>➕</button>
               <button class="icon-btn danger" on:click={() => deleteRestaurant(restaurant.id)}>🗑️</button>
             </div>
           </div>
@@ -318,7 +399,7 @@
           </div>
         </div>
       {:else}
-        <p class="empty-section">등록된 가게가 없습니다. "가게 추가" 버튼을 눌러주세요.</p>
+        <p class="empty-section">등록된 가게가 없습니다. "메뉴 추가" 버튼을 눌러주세요.</p>
       {/each}
     </div>
   </section>
@@ -381,6 +462,93 @@
       {/each}
     </div>
   </section>
+
+  <!-- 추천 메뉴 선택 모달 -->
+  {#if showRecommendedMenuModal}
+    <div class="modal-overlay" on:click={closeRecommendedMenuModal}>
+      <div class="modal-content large" on:click|stopPropagation>
+        <div class="modal-header">
+          <h2>🍽️ 메뉴 추가</h2>
+          <button class="close-btn" on:click={closeRecommendedMenuModal}>✕</button>
+        </div>
+        
+        <div class="modal-body">
+          {#if currentRestaurantForMenu}
+            <p class="modal-description">
+              <strong>{currentRestaurantForMenu.name}</strong>에 추가할 메뉴를 선택하세요
+            </p>
+          {:else}
+            <p class="modal-description">
+              추가할 메뉴를 선택하세요 (가게가 없으면 자동으로 생성됩니다)
+            </p>
+          {/if}
+          
+          <div class="recommended-menu-grid">
+            {#each recommendedMenus as menu}
+              <button 
+                class="recommended-menu-card"
+                on:click={() => addMenuFromRecommended(menu)}
+              >
+                <div class="menu-card-emoji">{menu.emoji}</div>
+                <div class="menu-card-info">
+                  <div class="menu-card-store">{menu.store}</div>
+                  <div class="menu-card-name">{menu.menu}</div>
+                  <div class="menu-card-price">{menu.price.toLocaleString()}원</div>
+                  <div class="menu-card-category">{menu.category}</div>
+                </div>
+              </button>
+            {/each}
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="modal-btn secondary" on:click={closeRecommendedMenuModal}>
+            취소
+          </button>
+          {#if currentRestaurantForMenu}
+            <button class="modal-btn primary" on:click={addMenuManually}>
+              직접 입력하기
+            </button>
+          {:else}
+            <button class="modal-btn primary" on:click={addRestaurant}>
+              새 가게 추가
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- 새 가게 추가 모달 -->
+  {#if showAddNewRestaurantModal}
+    <div class="modal-overlay" on:click={closeAddNewRestaurantModal}>
+      <div class="modal-content small" on:click|stopPropagation>
+        <div class="modal-header">
+          <h2>🏪 새 가게 추가</h2>
+          <button class="close-btn" on:click={closeAddNewRestaurantModal}>✕</button>
+        </div>
+        
+        <div class="modal-body">
+          <p class="modal-description">
+            새로운 가게 정보를 입력하세요
+          </p>
+          <div class="info-text">
+            <p>✅ 가게를 추가한 후 메뉴를 선택할 수 있습니다</p>
+            <p>✅ 추천 메뉴에서 선택하거나 직접 입력할 수 있습니다</p>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button class="modal-btn secondary" on:click={closeAddNewRestaurantModal}>
+            취소
+          </button>
+          <button class="modal-btn primary" on:click={createNewRestaurant}>
+            가게 만들기
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -690,5 +858,294 @@
     font-size: 0.8rem;
     font-weight: 600;
     margin-right: 8px;
+  }
+
+  /* 모달 스타일 */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 10px;
+  }
+
+  .modal-content {
+    background: white;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 800px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  .modal-content.large {
+    max-width: 90vw;
+    max-height: 90vh;
+  }
+
+  .modal-content.small {
+    max-width: 500px;
+    max-height: 70vh;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 2px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .modal-header h2 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #333;
+    margin: 0;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    color: #999;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.3s;
+  }
+
+  .close-btn:hover {
+    background: #f5f5f5;
+    color: #333;
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+  }
+
+  .modal-description {
+    font-size: 1rem;
+    color: #666;
+    margin: 0 0 16px 0;
+    text-align: center;
+  }
+
+  .recommended-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .recommended-menu-card {
+    background: white;
+    border: 2px solid #eee;
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-height: 0;
+  }
+
+  .recommended-menu-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #4caf50;
+  }
+
+  .menu-card-emoji {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+  }
+
+  .menu-card-info {
+    width: 100%;
+  }
+
+  .menu-card-store {
+    font-size: 0.75rem;
+    color: #999;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .menu-card-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 6px;
+    word-break: keep-all;
+  }
+
+  .menu-card-price {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #ff6b35;
+    margin-bottom: 5px;
+  }
+
+  .menu-card-category {
+    font-size: 0.7rem;
+    color: #666;
+    background: #f5f5f5;
+    padding: 3px 6px;
+    border-radius: 8px;
+    display: inline-block;
+  }
+
+  .modal-footer {
+    padding: 16px 20px;
+    border-top: 2px solid #f0f0f0;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  .modal-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .modal-btn.secondary {
+    background: #f5f5f5;
+    color: #666;
+  }
+
+  .modal-btn.secondary:hover {
+    background: #e0e0e0;
+  }
+
+  .modal-btn.primary {
+    background: #4caf50;
+    color: white;
+  }
+
+  .modal-btn.primary:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+  }
+
+  .info-text {
+    background: #f0f8ff;
+    padding: 12px;
+    border-radius: 12px;
+    margin-top: 12px;
+  }
+
+  .info-text p {
+    margin: 6px 0;
+    font-size: 0.9rem;
+    color: #333;
+    line-height: 1.5;
+  }
+
+  /* 모바일 반응형 */
+  @media (max-width: 768px) {
+    .modal-overlay {
+      padding: 5px;
+    }
+
+    .modal-content.large {
+      max-width: 95vw;
+      max-height: 92vh;
+    }
+
+    .modal-header h2 {
+      font-size: 1.2rem;
+    }
+
+    .recommended-menu-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .menu-card-emoji {
+      font-size: 2rem;
+    }
+
+    .menu-card-name {
+      font-size: 0.85rem;
+    }
+
+    .menu-card-price {
+      font-size: 0.9rem;
+    }
+
+    .modal-btn {
+      padding: 8px 16px;
+      font-size: 0.9rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .modal-header {
+      padding: 12px 16px;
+    }
+
+    .modal-body {
+      padding: 12px;
+    }
+
+    .modal-footer {
+      padding: 12px 16px;
+      gap: 8px;
+    }
+
+    .recommended-menu-grid {
+      gap: 8px;
+    }
+
+    .recommended-menu-card {
+      padding: 10px;
+    }
+
+    .menu-card-emoji {
+      font-size: 1.8rem;
+      margin-bottom: 6px;
+    }
+
+    .menu-card-store {
+      font-size: 0.7rem;
+    }
+
+    .menu-card-name {
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+    }
+
+    .menu-card-price {
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+    }
+
+    .menu-card-category {
+      font-size: 0.65rem;
+      padding: 2px 5px;
+    }
   }
 </style>
