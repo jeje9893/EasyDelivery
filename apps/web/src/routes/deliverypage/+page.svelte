@@ -522,7 +522,32 @@
     isListening = false;
   }
 
-  function startAIGreeting() {
+  function speakAI(text: string) {
+    if (!('speechSynthesis' in window)) return;
+
+    window.speechSynthesis.cancel();
+    aiSpeechSynthesis = new SpeechSynthesisUtterance(text);
+    aiSpeechSynthesis.lang = 'ko-KR';
+    aiSpeechSynthesis.rate = 1;
+    
+    return new Promise<void>((resolve) => {
+      if (aiSpeechSynthesis) {
+        aiSpeechSynthesis.onend = () => {
+          console.log('🔊 TTS 완료');
+          resolve();
+        };
+        
+        aiSpeechSynthesis.onerror = (event) => {
+          console.error('❌ TTS 오류:', event);
+          resolve(); // 오류가 나도 다음 동작 진행
+        };
+      }
+      
+      window.speechSynthesis.speak(aiSpeechSynthesis!);
+    });
+  }
+
+  async function startAIGreeting() {
     const greeting = "안녕하세요! 무엇을 주문하고 싶으신가요? 식당 이름이나 메뉴 이름을 말씀해주세요.";
     messageIdCounter++;
     voiceChatHistory = [...voiceChatHistory, { 
@@ -531,10 +556,12 @@
       timestamp: Date.now() + messageIdCounter 
     }];
     console.log('✅ AI 인사 추가:', voiceChatHistory);
-    speakAI(greeting);
-    setTimeout(() => startListening(), 2000);
+    
+    await speakAI(greeting);
+    setTimeout(() => startListening(), 500);
   }
 
+  // 음성 인식 시작
   function startListening() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert('음성 인식을 지원하지 않는 브라우저입니다.');
@@ -649,17 +676,7 @@
     isListening = false;
   }
 
-  function speakAI(text: string) {
-    if (!('speechSynthesis' in window)) return;
-
-    window.speechSynthesis.cancel();
-    aiSpeechSynthesis = new SpeechSynthesisUtterance(text);
-    aiSpeechSynthesis.lang = 'ko-KR';
-    aiSpeechSynthesis.rate = 1;
-    window.speechSynthesis.speak(aiSpeechSynthesis);
-  }
-
-  function processUserInput(userInput: string) {
+  async function processUserInput(userInput: string) {
     console.log('🔍 processUserInput 시작:', userInput);
     
     // 1. 보호자가 설정한 식당 메뉴 검색
@@ -753,9 +770,9 @@
       voiceChatHistory = [...voiceChatHistory, aiMessage];
       console.log('✅ AI 응답 추가 (메뉴 찾음):', voiceChatHistory);
       
-      speakAI(response);
+      await speakAI(response);
       
-      // 사용자 응답 대기
+      // TTS 완료 후 사용자 응답 대기
       setTimeout(() => {
         // 기존 인식 중지
         if (currentRecognition) {
@@ -777,7 +794,7 @@
         isProcessing = false;
         console.log('🎤 주문 확인 음성 인식 시작');
         
-        let hasProcessed = false; // 중복 처리 방지 플래그
+        let hasProcessed = false;
         
         // 20초 타임아웃
         const confirmTimeout = setTimeout(() => {
@@ -803,11 +820,12 @@
               timestamp: Date.now() + messageIdCounter 
             }];
             console.log('⏰ 확인 타임아웃:', voiceChatHistory);
-            speakAI(timeoutMsg);
             
-            setTimeout(() => {
-              closeAIVoiceMode();
-            }, 2000);
+            speakAI(timeoutMsg).then(() => {
+              setTimeout(() => {
+                closeAIVoiceMode();
+              }, 1000);
+            });
           }
         }, 20000);
         
@@ -825,7 +843,6 @@
           const confirmTranscript = event.results[0][0].transcript;
           console.log('✅ 확인 응답:', confirmTranscript);
           
-          // 사용자 응답 추가
           messageIdCounter++;
           voiceChatHistory = [...voiceChatHistory, { 
             role: 'user', 
@@ -834,18 +851,15 @@
           }];
           console.log('✅ 확인 응답 추가:', voiceChatHistory);
           
-          // UI 업데이트를 위한 약간의 딜레이
           setTimeout(() => {
             const lowerConfirm = confirmTranscript.toLowerCase();
             
-            // 긍정 키워드
             const positiveKeywords = ['주문', '네', '예', '응', '맞', '좋', '그래', '할게', '해', 
                                        '시켜', '담', '넣', '네네', '어', '음', '예예', '확인', 
                                        '됐', '됩니다', '요', '가능', '오케이', '오키', 'ok'];
             
             const hasPositiveKeyword = positiveKeywords.some(keyword => lowerConfirm.includes(keyword));
             
-            // 부정 키워드
             const negativeKeywords = ['아니', '안', '취소', '싫', '다시', '아뇨', '아니요'];
             const hasNegativeKeyword = negativeKeywords.some(keyword => lowerConfirm.includes(keyword));
             
@@ -869,13 +883,14 @@
                 timestamp: Date.now() + messageIdCounter 
               }];
               console.log('✅ 주문 확정 메시지 추가:', voiceChatHistory);
-              speakAI(confirmMsg);
               
               isProcessing = false;
-              setTimeout(() => {
-                console.log('🚪 음성 주문 모달 닫기');
-                closeAIVoiceMode();
-              }, 1500);
+              speakAI(confirmMsg).then(() => {
+                setTimeout(() => {
+                  console.log('🚪 음성 주문 모달 닫기');
+                  closeAIVoiceMode();
+                }, 1000);
+              });
             } else {
               console.log('❌ 주문 취소됨');
               messageIdCounter++;
@@ -886,12 +901,13 @@
                 timestamp: Date.now() + messageIdCounter 
               }];
               console.log('❌ 주문 취소 메시지 추가:', voiceChatHistory);
-              speakAI(cancelMsg);
               
               isProcessing = false;
-              setTimeout(() => startListening(), 2000);
+              speakAI(cancelMsg).then(() => {
+                setTimeout(() => startListening(), 500);
+              });
             }
-          }, 200); // UI 업데이트를 위한 딜레이
+          }, 200);
         };
         
         confirmRecognition.onerror = (event: any) => {
@@ -915,9 +931,10 @@
             message: errorMsg, 
             timestamp: Date.now() + messageIdCounter 
           }];
-          speakAI(errorMsg);
           
-          setTimeout(() => startListening(), 2000);
+          speakAI(errorMsg).then(() => {
+            setTimeout(() => startListening(), 500);
+          });
         };
         
         confirmRecognition.onend = () => {
@@ -949,7 +966,7 @@
           }];
           speakAI(errorMsg);
         }
-      }, 2000);
+      }, 500);
     } else if (foundRestaurant) {
       response = `${foundRestaurant.name}을 찾았습니다. 어떤 메뉴를 원하시나요?`;
       messageIdCounter++;
@@ -959,10 +976,10 @@
         timestamp: Date.now() + messageIdCounter 
       }];
       console.log('✅ AI 응답 추가 (식당 찾음):', voiceChatHistory);
-      speakAI(response);
       
       isProcessing = false;
-      setTimeout(() => startListening(), 2000);
+      await speakAI(response);
+      setTimeout(() => startListening(), 500);
     } else {
       response = "죄송합니다. 찾는 메뉴나 식당이 없습니다. 다시 한 번 말씀해주세요.";
       messageIdCounter++;
@@ -972,10 +989,10 @@
         timestamp: Date.now() + messageIdCounter 
       }];
       console.log('❌ AI 응답 추가 (못 찾음):', voiceChatHistory);
-      speakAI(response);
       
       isProcessing = false;
-      setTimeout(() => startListening(), 2000);
+      await speakAI(response);
+      setTimeout(() => startListening(), 500);
     }
   }
 
@@ -1227,8 +1244,6 @@
   {#if showAIVoiceModal}
     <div class="ai-modal-overlay" transition:fade on:click|self={closeAIVoiceMode}>
       <div class="ai-modal-content" on:click|stopPropagation transition:slide>
-        <button class="ai-close-btn" on:click={closeAIVoiceMode}>✕</button>
-        
         <div class="ai-header">
           <h2>🤖 AI 음성 주문</h2>
           <div class="ai-status" class:listening={isListening} class:processing={isProcessing}>
