@@ -1960,6 +1960,47 @@
     line-height: 1.2;
   }
 
+  /* ---------- Alert (payment) ---------- */
+  .alert-overlay { 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0,0,0,0.7); 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 400; 
+  }
+  
+  .alert-box { 
+    background: white; 
+    padding: 40px; 
+    border-radius: 20px; 
+    text-align: center; 
+    width: 80%; 
+    max-width: 400px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+  }
+  
+  .alert-icon { 
+    font-size: 4rem; 
+    margin-bottom: 20px; 
+  }
+  
+  .alert-box h2 { 
+    font-size: 2rem; 
+    color: #2e7d32; 
+    margin: 0 0 10px 0; 
+  }
+  
+  .alert-box p { 
+    font-size: 1.3rem; 
+    color: #555; 
+    margin: 0; 
+  }
+
   /* ---------- AI Voice Modal ---------- */
   .ai-modal-overlay {
     position: fixed;
