@@ -148,7 +148,7 @@
   let showMenuToggle: boolean = false;
   let currentView: 'home' | 'menu' | 'cart' | 'ai-voice' = 'home';
   let showAIVoiceModal = false;
-  let voiceChatHistory: { role: 'user' | 'ai'; message: string }[] = [];
+  let voiceChatHistory: { role: 'user' | 'ai'; message: string; timestamp: number }[] = [];
   let isListening = false;
   let aiSpeechSynthesis: SpeechSynthesisUtterance | null = null;
 
@@ -501,7 +501,8 @@
 
   function startAIGreeting() {
     const greeting = "안녕하세요! 무엇을 주문하고 싶으신가요? 식당 이름이나 메뉴 이름을 말씀해주세요.";
-    voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: greeting }];
+    voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: greeting, timestamp: Date.now() }];
+    console.log('✅ AI 인사 추가:', voiceChatHistory);
     speakAI(greeting);
     setTimeout(() => startListening(), 2000);
   }
@@ -519,22 +520,46 @@
     recognition.interimResults = false;
 
     isListening = true;
+    console.log('🎤 음성 인식 시작');
+
+    // 30초 타임아웃 설정
+    const timeout = setTimeout(() => {
+      recognition.stop();
+      isListening = false;
+      const timeoutMsg = "응답이 없어서 종료합니다. 다시 시도하시려면 🎤 버튼을 눌러주세요.";
+      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: timeoutMsg, timestamp: Date.now() }];
+      console.log('⏰ 타임아웃 메시지 추가:', voiceChatHistory);
+      speakAI(timeoutMsg);
+    }, 30000);
 
     recognition.onresult = (event: any) => {
+      clearTimeout(timeout);
       const transcript = event.results[0][0].transcript;
       console.log('🎤 사용자 입력:', transcript);
-      voiceChatHistory = [...voiceChatHistory, { role: 'user', message: transcript }];
-      processUserInput(transcript);
+      
+      // 사용자 메시지 즉시 추가 및 강제 업데이트
+      const userMessage = { role: 'user' as const, message: transcript, timestamp: Date.now() };
+      voiceChatHistory = [...voiceChatHistory, userMessage];
+      console.log('✅ 사용자 메시지 추가:', voiceChatHistory);
+      
       isListening = false;
+      
+      // 약간의 딜레이 후 처리 (UI 업데이트 보장)
+      setTimeout(() => {
+        processUserInput(transcript);
+      }, 100);
     };
 
     recognition.onerror = (event: any) => {
+      clearTimeout(timeout);
       console.error('❌ 음성 인식 오류:', event.error);
       isListening = false;
     };
 
     recognition.onend = () => {
+      clearTimeout(timeout);
       isListening = false;
+      console.log('🎤 음성 인식 종료');
     };
 
     recognition.start();
@@ -555,6 +580,7 @@
   }
 
   function processUserInput(userInput: string) {
+    console.log('🔍 processUserInput 시작:', userInput);
     const lowerInput = userInput.toLowerCase();
     
     // 1. 메뉴 검색
@@ -587,53 +613,109 @@
       const confirmedRestaurant = foundRestaurant;
       
       response = `${confirmedRestaurant.name}의 ${confirmedMenu.name}을 찾았습니다. ${confirmedMenu.price.toLocaleString()}원입니다. 주문하시겠습니까?`;
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response }];
+      
+      // AI 응답 즉시 추가
+      const aiMessage = { role: 'ai' as const, message: response, timestamp: Date.now() };
+      voiceChatHistory = [...voiceChatHistory, aiMessage];
+      console.log('✅ AI 응답 추가 (메뉴 찾음):', voiceChatHistory);
+      
       speakAI(response);
       
       // 사용자 응답 대기
       setTimeout(() => {
         const confirmRecognition = new ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition)();
         confirmRecognition.lang = 'ko-KR';
+        confirmRecognition.continuous = false;
+        confirmRecognition.interimResults = false;
+        
+        // 15초 타임아웃
+        const confirmTimeout = setTimeout(() => {
+          confirmRecognition.stop();
+          const timeoutMsg = "응답이 없어 주문을 취소합니다.";
+          voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: timeoutMsg, timestamp: Date.now() }];
+          console.log('⏰ 확인 타임아웃:', voiceChatHistory);
+          speakAI(timeoutMsg);
+          
+          // 타임아웃 후 자동으로 모달 닫기
+          setTimeout(() => {
+            closeAIVoiceMode();
+          }, 2000);
+        }, 15000);
         
         confirmRecognition.onresult = (event: any) => {
-          const confirmTranscript = event.results[0][0].transcript.toLowerCase();
-          voiceChatHistory = [...voiceChatHistory, { role: 'user', message: confirmTranscript }];
+          clearTimeout(confirmTimeout);
+          const confirmTranscript = event.results[0][0].transcript;
+          console.log('✅ 확인 응답:', confirmTranscript);
           
-          if (confirmTranscript.includes('주문') || confirmTranscript.includes('네') || 
-              confirmTranscript.includes('맞') || confirmTranscript.includes('좋') || 
-              confirmTranscript.includes('기') || confirmTranscript.includes('해')) {
-            // 주문 확정 - const로 고정된 변수 사용
+          // 확인 응답 즉시 추가
+          voiceChatHistory = [...voiceChatHistory, { 
+            role: 'user', 
+            message: confirmTranscript, 
+            timestamp: Date.now() 
+          }];
+          console.log('✅ 확인 응답 추가:', voiceChatHistory);
+          
+          const lowerConfirm = confirmTranscript.toLowerCase();
+          
+          // 주문 의사를 나타내는 키워드 확장
+          if (lowerConfirm.includes('주문') || lowerConfirm.includes('네') || 
+              lowerConfirm.includes('예') || lowerConfirm.includes('응') ||
+              lowerConfirm.includes('맞') || lowerConfirm.includes('좋') || 
+              lowerConfirm.includes('그래') || lowerConfirm.includes('할게') ||
+              lowerConfirm.includes('해') || lowerConfirm.includes('시켜') ||
+              lowerConfirm.includes('담') || lowerConfirm.includes('넣')) {
+            // 주문 확정 - 즉시 장바구니에 담기
+            console.log('🎉 주문 확정! 장바구니 담기 시작');
+            
             selectedRestaurant = confirmedRestaurant;
             selectedCategory = confirmedRestaurant.category;
             addToCart(confirmedMenu);
             
-            const confirmMsg = `${confirmedMenu.name}을 장바구니에 담았습니다. 장바구니로 이동합니다.`;
-            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: confirmMsg }];
+            const confirmMsg = `${confirmedMenu.name}을 장바구니에 담았습니다!`;
+            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: confirmMsg, timestamp: Date.now() }];
+            console.log('✅ 주문 확정 메시지 추가:', voiceChatHistory);
             speakAI(confirmMsg);
             
+            // 1.5초 후 모달 닫기
             setTimeout(() => {
+              console.log('🚪 음성 주문 모달 닫기');
               closeAIVoiceMode();
-              currentView = 'cart';
-            }, 2000);
+            }, 1500);
           } else {
             // 주문 취소
+            console.log('❌ 주문 취소됨');
             const cancelMsg = '주문이 취소되었습니다. 다른 메뉴를 찾아드릴까요?';
-            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: cancelMsg }];
+            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: cancelMsg, timestamp: Date.now() }];
+            console.log('❌ 주문 취소 메시지 추가:', voiceChatHistory);
             speakAI(cancelMsg);
             setTimeout(() => startListening(), 2000);
           }
         };
         
+        confirmRecognition.onerror = (event: any) => {
+          clearTimeout(confirmTimeout);
+          console.error('❌ 확인 인식 오류:', event.error);
+          
+          const errorMsg = "음성 인식에 문제가 있습니다. 다시 시도해주세요.";
+          voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: errorMsg, timestamp: Date.now() }];
+          speakAI(errorMsg);
+          
+          setTimeout(() => startListening(), 2000);
+        };
+        
         confirmRecognition.start();
+        console.log('🎤 주문 확인 음성 인식 시작');
       }, 1500);
     } else if (foundRestaurant) {
       response = `${foundRestaurant.name}을 찾았습니다. 어떤 메뉴를 원하시나요?`;
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response }];
+      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response, timestamp: Date.now() }];
+      console.log('✅ AI 응답 추가 (식당 찾음):', voiceChatHistory);
       speakAI(response);
       setTimeout(() => startListening(), 2000);
     } else {
       response = "죄송합니다. 찾는 메뉴나 식당이 없습니다. 다시 한 번 말씀해주세요.";
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response }];
+      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response, timestamp: Date.now() }];
+      console.log('❌ AI 응답 추가 (못 찾음):', voiceChatHistory);
       speakAI(response);
       setTimeout(() => startListening(), 2000);
     }
@@ -902,8 +984,9 @@
         </div>
 
         <div class="ai-chat-box">
-          {#each voiceChatHistory as chat (chat.role + JSON.stringify(chat.message))}
-            <div class="chat-message" class:user={chat.role === 'user'} class:ai={chat.role === 'ai'}>
+          {#each voiceChatHistory as chat (chat.timestamp)}
+            <div class="chat-message" class:user={chat.role === 'user'} class:ai={chat.role === 'ai'} 
+                 in:fly={{ y: 20, duration: 300 }}>
               <div class="chat-bubble">
                 {chat.message}
               </div>
