@@ -583,7 +583,7 @@
     console.log('🔍 processUserInput 시작:', userInput);
     const lowerInput = userInput.toLowerCase();
     
-    // 1. 메뉴 검색
+    // 1. 보호자가 설정한 식당 메뉴 검색
     let foundMenu: Menu | null = null;
     let foundRestaurant: Restaurant | null = null;
 
@@ -598,11 +598,67 @@
       }
     }
 
-    // 2. 식당 검색
+    // 2. 추천 메뉴 목록에서 검색 (보호자 설정 메뉴에서 못 찾은 경우)
+    if (!foundMenu) {
+      const recommendedMenu = recommendedMenus.find((rm: RecommendedMenu) => 
+        rm.menu.includes(userInput) || userInput.includes(rm.menu) ||
+        rm.store.includes(userInput) || userInput.includes(rm.store)
+      );
+
+      if (recommendedMenu) {
+        console.log('✅ 추천 메뉴 목록에서 발견:', recommendedMenu.menu);
+        
+        // 추천 메뉴를 Menu 타입으로 변환
+        foundMenu = {
+          id: recommendedMenu.id,
+          name: recommendedMenu.menu,
+          price: recommendedMenu.price,
+          isRecommended: true,
+          image: recommendedMenu.emoji
+        };
+
+        // 해당 식당이 이미 있는지 확인
+        foundRestaurant = restaurants.find((r: Restaurant) => r.name === recommendedMenu.store);
+
+        // 없으면 임시 식당 객체 생성 (주문 시 실제로 추가됨)
+        if (!foundRestaurant) {
+          const tempId = Math.max(0, ...restaurants.map(r => r.id)) + 1;
+          foundRestaurant = {
+            id: tempId,
+            name: recommendedMenu.store,
+            category: recommendedMenu.category,
+            img: recommendedMenu.emoji,
+            menus: []
+          };
+        }
+      }
+    }
+
+    // 3. 식당 검색 (메뉴를 못 찾은 경우)
     if (!foundRestaurant) {
+      // 보호자 설정 식당에서 검색
       foundRestaurant = restaurants.find((r: Restaurant) => 
         r.name.includes(userInput) || userInput.includes(r.name)
       ) || null;
+
+      // 추천 메뉴 목록에서 식당 검색
+      if (!foundRestaurant) {
+        const recommendedStore = recommendedMenus.find((rm: RecommendedMenu) => 
+          rm.store.includes(userInput) || userInput.includes(rm.store)
+        );
+
+        if (recommendedStore) {
+          console.log('✅ 추천 메뉴 목록에서 식당 발견:', recommendedStore.store);
+          const tempId = Math.max(0, ...restaurants.map(r => r.id)) + 1;
+          foundRestaurant = {
+            id: tempId,
+            name: recommendedStore.store,
+            category: recommendedStore.category,
+            img: recommendedStore.emoji,
+            menus: []
+          };
+        }
+      }
     }
 
     let response = '';
@@ -611,6 +667,7 @@
       // 클로저 내부에서 사용할 변수를 const로 고정
       const confirmedMenu = foundMenu;
       const confirmedRestaurant = foundRestaurant;
+      const isNewRestaurant = !restaurants.find(r => r.id === confirmedRestaurant.id);
       
       response = `${confirmedRestaurant.name}의 ${confirmedMenu.name}을 찾았습니다. ${confirmedMenu.price.toLocaleString()}원입니다. 주문하시겠습니까?`;
       
@@ -666,6 +723,12 @@
               lowerConfirm.includes('담') || lowerConfirm.includes('넣')) {
             // 주문 확정 - 즉시 장바구니에 담기
             console.log('🎉 주문 확정! 장바구니 담기 시작');
+            
+            // 새 식당인 경우 restaurants 배열에 추가
+            if (isNewRestaurant) {
+              restaurants = [...restaurants, confirmedRestaurant];
+              console.log('➕ 새 식당 추가 (추천 메뉴):', confirmedRestaurant.name);
+            }
             
             selectedRestaurant = confirmedRestaurant;
             selectedCategory = confirmedRestaurant.category;
