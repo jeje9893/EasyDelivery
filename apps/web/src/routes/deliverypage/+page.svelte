@@ -1,7 +1,11 @@
 <script lang="ts">
+  /// <reference types="svelte" />
   import { fly, fade, slide } from 'svelte/transition';
   import { onMount } from 'svelte';
   import { recommendedMenus } from '$lib/recommendedMenus';
+
+  // API 엔드포인트
+  const API_BASE_URL = 'http://localhost:3001/api';
 
   // 메뉴 항목 타입
   interface Menu {
@@ -10,6 +14,11 @@
     price: number;
     isRecommended: boolean;
     image?: string;
+  }
+
+  // 사용자 메뉴는 소속 매장을 포함
+  interface UserMenu extends Menu {
+    store: string;
   }
 
   // 추천 메뉴 타입
@@ -120,6 +129,12 @@
 
   // 식당 목록을 상태로 관리
   let restaurants: Restaurant[] = [];
+  let isLoading = false;
+  // 보호자 모드에서 편집한 사용자 메뉴 목록
+  let userMenus: UserMenu[] = [];
+
+  // 보호자 편집 메뉴 (사용자 모드의 "내 메뉴" 탭에 표시)
+  let guardianMenus: UserMenu[] = [];
 
   const categories = [
     { name: "치킨", img: "" },
@@ -155,32 +170,111 @@
   // 랜덤 추천 메뉴 4개 선택 상태
   let randomRecommendedMenus: RecommendedMenu[] = [];
 
-  // onMount: 페이지 로드 시 localStorage에서 주소, 가게, 메뉴 불러오기
-  onMount(() => {
-    loadGuardianSettings();
+  // API에서 식당 목록 불러오기
+  async function fetchRestaurants() {
+    try {
+      isLoading = true;
+      const response = await fetch(`${API_BASE_URL}/restaurants`);
+      if (!response.ok) throw new Error('식당 목록을 불러오는데 실패했습니다.');
+
+      const data = await response.json();
+      restaurants = data.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        img: r.img,
+        menus: r.menus.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          price: m.price,
+          isRecommended: m.is_recommended === 1,
+          image: m.image,
+          isGuardianAdded: m.is_guardian_added === 1
+        }))
+      }));
+
+      console.log('✅ [사용자 모드] API에서 식당 목록 로드:', restaurants.length, '개');
+      console.log('📋 [사용자 모드] 식당별 메뉴:', 
+        restaurants.map(r => ({
+          name: r.name,
+          totalMenus: r.menus.length,
+          guardianMenus: r.menus.filter(m => m.isGuardianAdded).length
+        }))
+      );
+
+      // 보호자가 추가한 메뉴만 필터링하여 guardianMenus에 할당
+      guardianMenus = restaurants.flatMap((restaurant) =>
+        restaurant.menus
+          .filter((menu: any) => menu.isGuardianAdded)
+          .map((menu: any) => ({
+            ...menu,
+            store: restaurant.name
+          }))
+      );
+
+      console.log('✅ [사용자 모드] 보호자 메뉴 추출 완료:', guardianMenus.length, '개');
+      console.log('📋 [사용자 모드] 보호자 메뉴 상세:', guardianMenus);
+    } catch (error) {
+      console.error('❌ [사용자 모드] 식당 목록 로드 실패:', error);
+      restaurants = [...defaultRestaurants];
+      guardianMenus = [];
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  // 보호자 설정을 API에서 불러오기
+  async function loadGuardianSettingsFromAPI() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/guardian-settings`);
+        if (!response.ok) throw new Error('보호자 설정을 불러오는데 실패했습니다.');
+        const settings = await response.json();
+        // settings를 사용하여 필요한 상태 업데이트
+    } catch (error) {
+        console.error('❌ 보호자 설정 로드 실패:', error);
+    }
+  }
+
+  // 보호자 편집 메뉴를 가져오는 함수 (더 이상 사용 안 함 - fetchRestaurants에 통합됨)
+  async function fetchGuardianMenus(): Promise<UserMenu[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/user-menus`);
+      if (!response.ok) throw new Error('보호자 메뉴를 불러오는데 실패했습니다.');
+      const data = await response.json();
+      console.log('✅ [사용자 모드] 보호자 메뉴 API 직접 호출:', data.length, '개');
+      guardianMenus = data.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        price: m.price,
+        isRecommended: m.is_recommended === 1,
+        image: m.image,
+        store: m.restaurant_name || m.store
+      }));
+      return guardianMenus;
+    } catch (error) {
+      console.error('❌ [사용자 모드] 보호자 메뉴 로드 실패:', error);
+      guardianMenus = [];
+      return [];
+    }
+  }
+
+  // 사용자 메뉴를 가져오는 함수 (기존 fetchUserMenus 제거)
+  async function fetchUserMenusFromRestaurants() {
+    try {
+      // 더 이상 별도의 API 호출 불필요 - fetchRestaurants에서 통합됨
+      console.log('✅ [사용자 모드] 메뉴 동기화 완료');
+    } catch (error) {
+      console.error('❌ [사용자 모드] 메뉴 동기화 실패:', error);
+    }
+  }
+
+  // onMount: 페이지 로드 시 데이터 불러오기
+  onMount(async () => {
+    console.log('🚀 [사용자 모드] 페이지 로드 시작');
+    await fetchRestaurants();
+    await loadGuardianSettingsFromAPI();
     selectRandomRecommendedMenus();
-    
-    // 같은 탭 내에서 localStorage 변경 감지
-    const handleStorageChange = () => {
-      console.log('📢 localStorage 변경 감지, 설정 다시 로드');
-      loadGuardianSettings();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    // 페이지 포커스 시에도 재로드
-    const handleFocus = () => {
-      console.log('📢 페이지 포커스, 설정 확인');
-      loadGuardianSettings();
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    
-    // cleanup
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('focus', handleFocus);
-    };
+    console.log('🚀 [사용자 모드] 페이지 로드 완료');
   });
 
   // 랜덤 추천 메뉴 4개 선택 함수
@@ -188,58 +282,6 @@
     const shuffled = [...recommendedMenus].sort(() => Math.random() - 0.5);
     randomRecommendedMenus = shuffled.slice(0, 4);
     console.log('🎲 랜덤 추천 메뉴 선택:', randomRecommendedMenus.map(m => m.menu));
-  }
-
-  // 보호자 설정 로드 함수
-  function loadGuardianSettings() {
-    const guardianSettings = localStorage.getItem('guardianSettings');
-    
-    if (guardianSettings) {
-      try {
-        const settings = JSON.parse(guardianSettings);
-        console.log('📋 localStorage에서 로드한 설정:', settings);
-        
-        // 사용자 정의 식당 목록 로드 (없으면 기본값 사용)
-        if (settings.restaurants && Array.isArray(settings.restaurants) && settings.restaurants.length > 0) {
-          restaurants = settings.restaurants;
-          console.log('✅ 보호자가 설정한 식당 목록 로드:', restaurants.length, '개');
-          console.log('식당 목록:', restaurants.map((r: Restaurant) => r.name));
-        } else {
-          restaurants = [...defaultRestaurants];
-          console.log('✅ 기본 식당 목록 사용 (보호자 설정 비어있음)');
-        }
-        
-        // 배달 주소 로드
-        if (settings.defaultDeliveryAddress) {
-          deliveryAddress = settings.defaultDeliveryAddress;
-          console.log('✅ 저장된 배달 주소 로드:', deliveryAddress);
-        }
-        
-        // 기본 가게 설정 로드
-        if (settings.defaultRestaurantId && settings.defaultCategoryName) {
-          const defaultRestaurant = restaurants.find((r: Restaurant) => r.id === settings.defaultRestaurantId);
-          if (defaultRestaurant) {
-            selectedCategory = settings.defaultCategoryName;
-            selectedRestaurant = defaultRestaurant;
-            console.log('✅ 저장된 가게 로드:', defaultRestaurant.name);
-          }
-        }
-      } catch (e) {
-        console.error('❌ localStorage 파싱 오류:', e);
-        restaurants = [...defaultRestaurants];
-      }
-    } else {
-      restaurants = [...defaultRestaurants];
-      console.log('✅ 기본 식당 목록 사용 (설정 없음)');
-    }
-  }
-
-  // localStorage 변경 감지
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', () => {
-      console.log('📢 localStorage 변경 감지, 설정 다시 로드');
-      loadGuardianSettings();
-    });
   }
 
   // -------------------------
@@ -275,10 +317,8 @@
   // 총 개수
   $: totalCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  // 추천 메뉴 전체 (모든 식당에서 추천된 메뉴 모음)
-  $: allRecommendedMenus = restaurants
-    .flatMap(r => r.menus)
-    .filter(menu => menu.isRecommended);
+  // 보호자 편집 메뉴 → 사용자 모드의 "내 메뉴" 탭에 표시
+  $: allRecommendedMenus = guardianMenus;
 
   // 현재 선택된 식당의 표시할 메뉴(전체 or 추천)
   $: displayMenus = selectedRestaurant
@@ -350,7 +390,7 @@
   }
 
   // 결제 처리(샘플): 간단한 애니메이션 후 초기화
-  function handlePayment() {
+  async function handlePayment() {
     console.log('💳 handlePayment 호출');
     if (cart.length === 0) {
       console.log('❌ 장바구니가 비어있음');
@@ -358,16 +398,53 @@
     }
     if (!checkAddressBeforeAction()) return;
 
-    console.log('✅ 결제 진행 중...');
-    showPaymentAlert = true;
-    setTimeout(() => {
-      showPaymentAlert = false;
-      cart = [];
-      selectedRestaurant = null;
-      selectedCategory = "";
-      goHome();
-      console.log('✅ 결제 완료 및 초기화');
-    }, 3000);
+    try {
+      console.log('✅ 결제 진행 중...');
+      
+      const orderData = {
+        delivery_address: deliveryAddress,
+        request_note: '', // 요청사항이 있다면 여기에 추가
+        total_amount: totalAmount,
+        items: cart.map(item => {
+          // 메뉴 ID 찾기
+          const menu = restaurants
+            .flatMap(r => r.menus)
+            .find(m => m.name === item.name);
+          
+          return {
+            menu_id: menu?.id || 0,
+            name: item.name,
+            price: item.price,
+            qty: item.qty
+          };
+        })
+      };
+      
+      const response = await fetch(`${API_BASE_URL}/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData)
+      });
+      
+      if (!response.ok) throw new Error('주문 처리 실패');
+      
+      const result = await response.json();
+      console.log('✅ 주문 완료:', result);
+      
+      showPaymentAlert = true;
+      setTimeout(() => {
+        showPaymentAlert = false;
+        cart = [];
+        selectedRestaurant = null;
+        selectedCategory = "";
+        goHome();
+      }, 3000);
+    } catch (error) {
+      console.error('❌ 주문 처리 오류:', error);
+      alert('주문 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
+    }
   }
 
   // 장바구니 항목 수량 증가
@@ -695,6 +772,7 @@
           class="tab-my"
           class:active={menuTab === '내 메뉴'}
           on:click={() => menuTab = '내 메뉴'}
+          title="보호자가 편집한 추천 메뉴"
         >
           내 메뉴
         </button>
@@ -702,47 +780,61 @@
           class="tab-recommend"
           class:active={menuTab === '추천 메뉴'}
           on:click={() => menuTab = '추천 메뉴'}
+          title="AI가 추천하는 메뉴"
         >
           추천 메뉴
         </button>
       </div>
 
-      <!-- 내 메뉴 탭 - 기존 추천 메뉴 (restaurants에서) -->
+      <!-- 내 메뉴 탭 - 보호자 편집 메뉴 -->
       {#if menuTab === '내 메뉴'}
         <div class="recommended-grid" in:fade={{ duration: 300 }}>
-          {#each allRecommendedMenus as menu, idx}
-            <button
-              class="recommended-card"
-              class:highlight={idx === 0}
-              on:click={() => handleQuickMenuClick(menu)}
-            >
-              <div class="card-image">{menu.image || '🍽️'}</div>
-              <div class="card-info">
-                <div class="card-name">{menu.name}</div>
-                <div class="card-price">{menu.price.toLocaleString()}원</div>
-              </div>
-            </button>
-          {/each}
+          {#if allRecommendedMenus.length > 0}
+            {#each allRecommendedMenus as menu, idx}
+              <button
+                class="recommended-card"
+                class:highlight={idx === 0}
+                on:click={() => handleQuickMenuClick(menu)}
+              >
+                <div class="card-image">{menu.image || '🍽️'}</div>
+                <div class="card-info">
+                  <div class="card-store">{menu.store}</div>
+                  <div class="card-name">{menu.name}</div>
+                  <div class="card-price">{menu.price.toLocaleString()}원</div>
+                </div>
+              </button>
+            {/each}
+          {:else}
+            <div class="empty-msg" style="grid-column: 1/-1;">
+              아직 추가된 메뉴가 없습니다.
+            </div>
+          {/if}
         </div>
       {/if}
 
       <!-- 추천 메뉴 탭 - 랜덤 추천 메뉴 -->
       {#if menuTab === '추천 메뉴'}
         <div class="recommended-grid" in:fade={{ duration: 300 }}>
-          {#each randomRecommendedMenus as menu, idx}
-            <button
-              class="recommended-card"
-              class:highlight={idx === 0}
-              on:click={() => handleRecommendedMenuClick(menu)}
-            >
-              <div class="card-image">{menu.emoji}</div>
-              <div class="card-info">
-                <div class="card-store">{menu.store}</div>
-                <div class="card-name">{menu.menu}</div>
-                <div class="card-price">{menu.price.toLocaleString()}원</div>
-              </div>
-            </button>
-          {/each}
+          {#if randomRecommendedMenus.length > 0}
+            {#each randomRecommendedMenus as menu, idx}
+              <button
+                class="recommended-card"
+                class:highlight={idx === 0}
+                on:click={() => handleRecommendedMenuClick(menu)}
+              >
+                <div class="card-image">{menu.emoji}</div>
+                <div class="card-info">
+                  <div class="card-store">{menu.store}</div>
+                  <div class="card-name">{menu.menu}</div>
+                  <div class="card-price">{menu.price.toLocaleString()}원</div>
+                </div>
+              </button>
+            {/each}
+          {:else}
+            <div class="empty-msg" style="grid-column: 1/-1;">
+              추천 메뉴를 불러오는 중...
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -853,6 +945,13 @@
           {/each}
         </div>
       {/if}
+    {/if}
+
+    {#if isLoading}
+      <div class="loading-overlay">
+        <div class="loading-spinner">🔄</div>
+        <p>메뉴를 불러오는 중...</p>
+      </div>
     {/if}
   </main>
 
@@ -1686,5 +1785,29 @@
   .listen-btn:disabled {
     background: #ccc;
     cursor: not-allowed;
+  }
+
+  .loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .loading-spinner {
+    font-size: 4rem;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>

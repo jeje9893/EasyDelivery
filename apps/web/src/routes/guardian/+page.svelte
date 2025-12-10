@@ -1,694 +1,639 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import { fade, slide } from 'svelte/transition';
 
-  interface Menu {
+  const API_BASE_URL = 'http://localhost:3001/api';
+
+  interface GuardianMenu {
     id: number;
-    name: string;
+    restaurant_name: string;
+    menu_name: string;
     price: number;
-    isRecommended: boolean;
-    image?: string;
+    image: string;
+    created_at?: string;
   }
 
-  interface Restaurant {
-    id: number;
-    name: string;
-    category: string;
-    img: string;
-    menus: Menu[];
-  }
+  // 상태 변수
+  let menus: GuardianMenu[] = [];
+  let isLoading = false;
+  let showModal = false;
+  let errorMessage = '';
 
-  interface Address {
-    id: number;
-    address: string;
-    isDefault: boolean;
-  }
+  // 폼 입력값
+  let restaurantName = '';
+  let menuName = '';
+  let price = '';
+  let selectedEmoji = '🍽️';
 
-  interface PaymentMethod {
-    id: number;
-    type: string;
-    name: string;
-    isDefault: boolean;
-  }
+  // 이모지 목록
+  const emojis = ['🍽️', '🍗', '🍕', '🍜', '🍚', '🥘', '🍙', '🥗', '🍤', '🧀', '🍢', '🍰', '☕'];
 
-  let restaurants: Restaurant[] = [];
-  let savedAddresses: Address[] = [];
-  let paymentMethods: PaymentMethod[] = [];
-  let selectedRestaurant: Restaurant | null = null;
-
-  onMount(() => {
-    loadSettings();
-  });
-
-  function loadSettings() {
-    const saved = localStorage.getItem('guardianSettings');
-    console.log('📋 보호자 모드 - localStorage 로드:', saved);
-    
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        restaurants = settings.restaurants || [];
-        savedAddresses = settings.addresses || [];
-        paymentMethods = settings.payments || [];
-        console.log('✅ 보호자 모드 - 데이터 로드 완료');
-        console.log('식당:', restaurants.length, '개');
-        console.log('주소:', savedAddresses.length, '개');
-        console.log('결제수단:', paymentMethods.length, '개');
-      } catch (e) {
-        console.error('❌ 보호자 모드 - localStorage 파싱 오류:', e);
-        initializeDefaultData();
-      }
-    } else {
-      console.log('ℹ️ 보호자 모드 - 저장된 설정 없음');
-      initializeDefaultData();
-    }
-  }
-
-  function initializeDefaultData() {
-    restaurants = [];
-    savedAddresses = [];
-    paymentMethods = [];
-  }
-
-  function saveAllSettings() {
+  // 메뉴 목록 불러오기
+  async function loadMenus() {
     try {
-      const defaultAddress = savedAddresses.find(a => a.isDefault);
-      const settings = {
-        restaurants,
-        addresses: savedAddresses,
-        payments: paymentMethods,
-        defaultDeliveryAddress: defaultAddress?.address || '',
-        defaultRestaurantId: selectedRestaurant?.id || null,
-        defaultCategoryName: selectedRestaurant?.category || ''
-      };
+      console.log('📡 메뉴 불러오기 시작');
+      const response = await fetch(`${API_BASE_URL}/guardian-menus`);
       
-      const settingsStr = JSON.stringify(settings);
-      localStorage.setItem('guardianSettings', settingsStr);
+      if (!response.ok) {
+        throw new Error(`서버 오류: ${response.status}`);
+      }
       
-      console.log('💾 전체 설정 저장 완료');
-      console.log('저장된 데이터:', settingsStr);
-      
-      alert('✅ 모든 설정이 저장되었습니다!');
-    } catch (e) {
-      console.error('❌ 저장 오류:', e);
-      alert('저장 중 오류가 발생했습니다.');
+      menus = await response.json();
+      console.log('✅ 메뉴 로드 성공:', menus);
+      errorMessage = '';
+    } catch (error) {
+      console.error('❌ 메뉴 로드 실패:', error);
+      errorMessage = '메뉴를 불러오는데 실패했습니다.';
+      menus = [];
     }
   }
 
-  // 식당 관련 함수
-  function addRestaurant() {
-    const name = prompt('새 가게 이름:');
-    if (!name) return;
-    
-    const category = prompt('카테고리:');
-    if (!category) return;
-    
-    const img = prompt('이모지 아이콘:', '🍽️');
-    if (!img) return;
-    
-    const newId = restaurants.length > 0 ? Math.max(...restaurants.map(r => r.id)) + 1 : 1;
-    restaurants = [...restaurants, {
-      id: newId,
-      name,
-      category,
-      img,
-      menus: []
-    }];
-    
-    console.log('➕ 새 가게 추가:', name);
-    saveAllSettings();
-  }
-
-  function deleteRestaurant(id: number) {
-    const restaurant = restaurants.find(r => r.id === id);
-    if (!restaurant) return;
-    
-    if (confirm(`"${restaurant.name}" 가게를 삭제하시겠습니까?`)) {
-      restaurants = restaurants.filter(r => r.id !== id);
-      console.log('🗑️ 가게 삭제:', restaurant.name);
-      saveAllSettings();
-    }
-  }
-
-  function addMenu(restaurant: Restaurant) {
-    const name = prompt('메뉴 이름:');
-    if (!name) return;
-    
-    const priceStr = prompt('가격:');
-    if (!priceStr) return;
-    
-    const price = parseInt(priceStr);
-    if (isNaN(price)) {
-      alert('올바른 가격을 입력하세요.');
+  // 메뉴 추가
+  async function addMenu() {
+    // 입력값 검증
+    if (!restaurantName.trim()) {
+      alert('식당명을 입력해주세요.');
       return;
     }
-    
-    const image = prompt('이모지:', '🍽️');
-    const isRecommended = confirm('추천 메뉴로 설정하시겠습니까?');
-    
-    const newId = restaurant.menus.length > 0 
-      ? Math.max(...restaurant.menus.map(m => m.id)) + 1 
-      : 1;
-    
-    restaurant.menus = [...restaurant.menus, {
-      id: newId,
-      name,
-      price,
-      isRecommended,
-      image: image || '🍽️'
-    }];
-    
-    restaurants = [...restaurants];
-    console.log('➕ 새 메뉴 추가:', name, '→', restaurant.name);
-    saveAllSettings();
-  }
+    if (!menuName.trim()) {
+      alert('메뉴명을 입력해주세요.');
+      return;
+    }
+    if (!price.trim()) {
+      alert('가격을 입력해주세요.');
+      return;
+    }
 
-  function deleteMenu(restaurant: Restaurant, menuId: number) {
-    const menu = restaurant.menus.find(m => m.id === menuId);
-    if (!menu) return;
-    
-    if (confirm(`"${menu.name}" 메뉴를 삭제하시겠습니까?`)) {
-      restaurant.menus = restaurant.menus.filter(m => m.id !== menuId);
-      restaurants = [...restaurants];
-      console.log('🗑️ 메뉴 삭제:', menu.name);
-      saveAllSettings();
+    const priceNum = parseInt(price);
+    if (isNaN(priceNum) || priceNum < 0) {
+      alert('올바른 가격을 입력해주세요.');
+      return;
+    }
+
+    try {
+      isLoading = true;
+      errorMessage = '';
+
+      const newMenu = {
+        restaurant_name: restaurantName.trim(),
+        menu_name: menuName.trim(),
+        price: priceNum,
+        image: selectedEmoji
+      };
+
+      console.log('📤 메뉴 추가 요청:', newMenu);
+
+      const response = await fetch(`${API_BASE_URL}/guardian-menus`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newMenu)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`서버 오류: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ 메뉴 추가 성공:', result);
+
+      // 성공 메시지
+      alert(`${restaurantName}의 ${menuName} 메뉴가 추가되었습니다!`);
+
+      // 폼 초기화
+      restaurantName = '';
+      menuName = '';
+      price = '';
+      selectedEmoji = '🍽️';
+      showModal = false;
+
+      // 목록 새로고침
+      await loadMenus();
+
+    } catch (error) {
+      console.error('❌ 메뉴 추가 실패:', error);
+      errorMessage = error instanceof Error ? error.message : '메뉴 추가에 실패했습니다.';
+      alert(errorMessage);
+    } finally {
+      isLoading = false;
     }
   }
 
-  function toggleRecommend(restaurant: Restaurant, menuId: number) {
-    const menu = restaurant.menus.find(m => m.id === menuId);
-    if (menu) {
-      menu.isRecommended = !menu.isRecommended;
-      restaurants = [...restaurants];
-      console.log('⭐ 추천 토글:', menu.name, '→', menu.isRecommended);
-      saveAllSettings();
+  // 메뉴 삭제
+  async function deleteMenu(id: number, name: string) {
+    if (!confirm(`'${name}' 메뉴를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      isLoading = true;
+      errorMessage = '';
+
+      console.log('🗑️ 메뉴 삭제 요청:', id);
+
+      const response = await fetch(`${API_BASE_URL}/guardian-menus/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error(`서버 오류: ${response.status}`);
+      }
+
+      console.log('✅ 메뉴 삭제 성공');
+      alert(`${name} 메뉴가 삭제되었습니다.`);
+
+      // 목록 새로고침
+      await loadMenus();
+
+    } catch (error) {
+      console.error('❌ 메뉴 삭제 실패:', error);
+      errorMessage = '메뉴 삭제에 실패했습니다.';
+      alert(errorMessage);
+    } finally {
+      isLoading = false;
     }
   }
 
-  // 주소 관련 함수
-  function addAddress() {
-    const address = prompt('배달 주소를 입력하세요:');
-    if (!address) return;
-    
-    const isDefault = savedAddresses.length === 0 || confirm('기본 주소로 설정하시겠습니까?');
-    
-    if (isDefault) {
-      savedAddresses = savedAddresses.map(a => ({ ...a, isDefault: false }));
-    }
-    
-    const newId = savedAddresses.length > 0 ? Math.max(...savedAddresses.map(a => a.id)) + 1 : 1;
-    savedAddresses = [...savedAddresses, { id: newId, address, isDefault }];
-    
-    console.log('➕ 새 주소 추가:', address);
-    saveAllSettings();
+  // 모달 열기
+  function openModal() {
+    showModal = true;
+    restaurantName = '';
+    menuName = '';
+    price = '';
+    selectedEmoji = '🍽️';
   }
 
-  function deleteAddress(id: number) {
-    const address = savedAddresses.find(a => a.id === id);
-    if (!address) return;
-    
-    if (confirm(`"${address.address}" 주소를 삭제하시겠습니까?`)) {
-      savedAddresses = savedAddresses.filter(a => a.id !== id);
-      console.log('🗑️ 주소 삭제:', address.address);
-      saveAllSettings();
-    }
+  // 모달 닫기
+  function closeModal() {
+    showModal = false;
   }
 
-  function setDefaultAddress(id: number) {
-    savedAddresses = savedAddresses.map(a => ({
-      ...a,
-      isDefault: a.id === id
-    }));
-    saveAllSettings();
+  // 홈으로 이동
+  function goHome() {
+    window.location.href = '/';
   }
 
-  // 결제 수단 관련 함수
-  function addPaymentMethod() {
-    const type = prompt('결제 수단 종류 (카드/계좌):');
-    if (!type) return;
-    
-    const name = prompt('결제 수단 이름 (예: 신한카드):');
-    if (!name) return;
-    
-    const isDefault = paymentMethods.length === 0 || confirm('기본 결제 수단으로 설정하시겠습니까?');
-    
-    if (isDefault) {
-      paymentMethods = paymentMethods.map(p => ({ ...p, isDefault: false }));
-    }
-    
-    const newId = paymentMethods.length > 0 ? Math.max(...paymentMethods.map(p => p.id)) + 1 : 1;
-    paymentMethods = [...paymentMethods, { id: newId, type, name, isDefault }];
-    
-    console.log('➕ 새 결제 수단 추가:', name);
-    saveAllSettings();
-  }
-
-  function deletePaymentMethod(id: number) {
-    const payment = paymentMethods.find(p => p.id === id);
-    if (!payment) return;
-    
-    if (confirm(`"${payment.name}" 결제 수단을 삭제하시겠습니까?`)) {
-      paymentMethods = paymentMethods.filter(p => p.id !== id);
-      console.log('🗑️ 결제 수단 삭제:', payment.name);
-      saveAllSettings();
-    }
-  }
-
-  function setDefaultPayment(id: number) {
-    paymentMethods = paymentMethods.map(p => ({
-      ...p,
-      isDefault: p.id === id
-    }));
-    saveAllSettings();
-  }
+  // 페이지 로드시 메뉴 불러오기
+  onMount(() => {
+    console.log('🚀 보호자 모드 시작');
+    loadMenus();
+  });
 </script>
 
-<div class="guardian-container">
-  <div class="guardian-top">
-    <button class="home-btn" on:click={() => goto('/')}>← 홈</button>
-    <h1>보호자 모드</h1>
-  </div>
+<div class="container">
+  <!-- 헤더 -->
+  <header class="header">
+    <button class="btn-home" on:click={goHome}>← 홈</button>
+    <h1>🛡️ 보호자 메뉴 관리</h1>
+    <button class="btn-add" on:click={openModal}>+ 추가</button>
+  </header>
 
-  <!-- 식당 및 메뉴 관리 섹션 -->
-  <section class="guardian-section">
-    <div class="section-header">
-      <h2>🏪 식당 및 메뉴 관리</h2>
-      <button class="add-btn" on:click={addRestaurant}>+ 가게 추가</button>
+  <!-- 에러 메시지 -->
+  {#if errorMessage}
+    <div class="error-banner" transition:fade>
+      <p>{errorMessage}</p>
+      <button on:click={() => errorMessage = ''}>✕</button>
     </div>
+  {/if}
 
-    <div class="restaurants-list">
-      {#each restaurants as restaurant}
-        <div class="restaurant-card">
-          <div class="restaurant-header">
-            <div class="restaurant-info">
-              <span class="restaurant-icon">{restaurant.img}</span>
-              <div>
-                <h3>{restaurant.name}</h3>
-                <span class="category-badge">{restaurant.category}</span>
-              </div>
+  <!-- 로딩 -->
+  {#if isLoading}
+    <div class="loading">처리 중...</div>
+  {/if}
+
+  <!-- 메뉴 목록 -->
+  <main class="main">
+    {#if menus.length === 0}
+      <div class="empty">
+        <p>등록된 메뉴가 없습니다.</p>
+        <button class="btn-add-large" on:click={openModal}>
+          첫 메뉴 추가하기
+        </button>
+      </div>
+    {:else}
+      <h2>등록된 메뉴 ({menus.length}개)</h2>
+      <div class="menu-grid">
+        {#each menus as menu (menu.id)}
+          <div class="menu-card" transition:fade>
+            <div class="menu-top">
+              <span class="emoji">{menu.image}</span>
+              <button class="btn-delete" on:click={() => deleteMenu(menu.id, menu.menu_name)}>
+                ✕
+              </button>
             </div>
-            <div class="restaurant-actions">
-              <button class="icon-btn" on:click={() => addMenu(restaurant)}>➕</button>
-              <button class="icon-btn danger" on:click={() => deleteRestaurant(restaurant.id)}>🗑️</button>
+            <h3>{menu.menu_name}</h3>
+            <p class="price">{menu.price.toLocaleString()}원</p>
+            <p class="restaurant">{menu.restaurant_name}</p>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </main>
+
+  <!-- 메뉴 추가 모달 -->
+  {#if showModal}
+    <div class="modal-overlay" transition:fade on:click={closeModal}>
+      <div class="modal" on:click|stopPropagation transition:slide>
+        <button class="modal-close" on:click={closeModal}>✕</button>
+        
+        <h2>메뉴 추가</h2>
+
+        <form on:submit|preventDefault={addMenu}>
+          <div class="form-group">
+            <label for="restaurant">식당명</label>
+            <input 
+              id="restaurant"
+              type="text" 
+              bind:value={restaurantName}
+              placeholder="예: 중국집"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="menu">메뉴명</label>
+            <input 
+              id="menu"
+              type="text" 
+              bind:value={menuName}
+              placeholder="예: 짜장면"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="price">가격 (원)</label>
+            <input 
+              id="price"
+              type="number" 
+              bind:value={price}
+              placeholder="예: 9900"
+              min="0"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label>아이콘 선택</label>
+            <div class="emoji-grid">
+              {#each emojis as emoji}
+                <button
+                  type="button"
+                  class="emoji-btn"
+                  class:active={selectedEmoji === emoji}
+                  on:click={() => selectedEmoji = emoji}
+                >
+                  {emoji}
+                </button>
+              {/each}
             </div>
           </div>
 
-          <div class="menus-list">
-            {#each restaurant.menus as menu}
-              <div class="menu-row">
-                <span class="menu-icon">{menu.image || '🍽️'}</span>
-                <div class="menu-details">
-                  <span class="menu-name">{menu.name}</span>
-                  <span class="menu-price">{menu.price.toLocaleString()}원</span>
-                </div>
-                <div class="menu-actions">
-                  <button 
-                    class="recommend-btn" 
-                    class:active={menu.isRecommended}
-                    on:click={() => toggleRecommend(restaurant, menu.id)}
-                  >
-                    ⭐
-                  </button>
-                  <button class="icon-btn danger sm" on:click={() => deleteMenu(restaurant, menu.id)}>✕</button>
-                </div>
-              </div>
-            {:else}
-              <p class="empty-text">메뉴가 없습니다. ➕ 버튼을 눌러 추가하세요.</p>
-            {/each}
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" on:click={closeModal}>
+              취소
+            </button>
+            <button type="submit" class="btn-submit" disabled={isLoading}>
+              {isLoading ? '추가 중...' : '추가하기'}
+            </button>
           </div>
-        </div>
-      {:else}
-        <p class="empty-section">등록된 가게가 없습니다. "가게 추가" 버튼을 눌러주세요.</p>
-      {/each}
+        </form>
+      </div>
     </div>
-  </section>
-
-  <!-- 배달 주소 관리 섹션 -->
-  <section class="guardian-section">
-    <div class="section-header">
-      <h2>📍 배달 주소 관리</h2>
-      <button class="add-btn" on:click={addAddress}>+ 주소 추가</button>
-    </div>
-
-    <div class="address-list">
-      {#each savedAddresses as addr}
-        <div class="address-item" class:default={addr.isDefault}>
-          <div class="address-text">
-            {addr.address}
-            {#if addr.isDefault}
-              <span class="default-badge">기본</span>
-            {/if}
-          </div>
-          <div class="address-actions">
-            {#if !addr.isDefault}
-              <button class="small-btn" on:click={() => setDefaultAddress(addr.id)}>기본 설정</button>
-            {/if}
-            <button class="icon-btn danger sm" on:click={() => deleteAddress(addr.id)}>✕</button>
-          </div>
-        </div>
-      {:else}
-        <p class="empty-section">등록된 주소가 없습니다.</p>
-      {/each}
-    </div>
-  </section>
-
-  <!-- 결제 수단 관리 섹션 -->
-  <section class="guardian-section">
-    <div class="section-header">
-      <h2>💳 결제 수단 관리</h2>
-      <button class="add-btn" on:click={addPaymentMethod}>+ 결제 수단 추가</button>
-    </div>
-
-    <div class="payment-list">
-      {#each paymentMethods as payment}
-        <div class="payment-item" class:default={payment.isDefault}>
-          <div class="payment-text">
-            <span class="payment-type">{payment.type}</span>
-            {payment.name}
-            {#if payment.isDefault}
-              <span class="default-badge">기본</span>
-            {/if}
-          </div>
-          <div class="payment-actions">
-            {#if !payment.isDefault}
-              <button class="small-btn" on:click={() => setDefaultPayment(payment.id)}>기본 설정</button>
-            {/if}
-            <button class="icon-btn danger sm" on:click={() => deletePaymentMethod(payment.id)}>✕</button>
-          </div>
-        </div>
-      {:else}
-        <p class="empty-section">등록된 결제 수단이 없습니다.</p>
-      {/each}
-    </div>
-  </section>
+  {/if}
 </div>
 
 <style>
-  .guardian-container {
-    width: 100%;
-    margin: 0 auto;
-    background: white;
+  * {
+    box-sizing: border-box;
+  }
+
+  .container {
     min-height: 100vh;
-    padding: 20px;
-  }
-
-  .guardian-top {
-    position: relative;
-    margin-bottom: 20px;
-  }
-
-  .guardian-top h1 {
-    text-align: center;
-    font-size: 2rem;
-    margin: 0;
-    color: #333;
-  }
-
-  .home-btn {
-    position: absolute;
-    top: 0;
-    left: 0;
     background: #f5f5f5;
-    color: #333;
-    border: 2px solid #ddd;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.3s;
   }
 
-  .home-btn:hover {
-    background: #e8e8e8;
-    border-color: #999;
-    transform: translateX(-2px);
-  }
-
-  .guardian-section {
-    background: white;
-    padding: 24px;
-    border-radius: 16px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
-
-  .section-header {
+  /* 헤더 */
+  .header {
+    background: #000;
+    color: white;
+    padding: 1rem;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    justify-content: space-between;
+    gap: 1rem;
   }
 
-  .section-header h2 {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #333;
+  .header h1 {
     margin: 0;
+    font-size: 1.5rem;
+    flex: 1;
+    text-align: center;
   }
 
-  .add-btn {
-    background: #4caf50;
+  .btn-home {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .btn-home:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-add {
+    background: #667eea;
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 700;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s;
+    font-weight: 700;
   }
 
-  .add-btn:hover {
-    background: #45a049;
-    transform: translateY(-2px);
+  .btn-add:hover {
+    background: #5568d3;
   }
 
-  .restaurants-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .restaurant-card {
-    border: 2px solid #eee;
-    border-radius: 12px;
-    padding: 16px;
-    background: #fafafa;
-  }
-
-  .restaurant-header {
+  /* 에러 배너 */
+  .error-banner {
+    background: #fee;
+    border-left: 4px solid #f44;
+    padding: 1rem;
+    margin: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #eee;
+    border-radius: 4px;
   }
 
-  .restaurant-info {
+  .error-banner p {
+    margin: 0;
+    color: #c33;
+  }
+
+  .error-banner button {
+    background: #f44;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  /* 로딩 */
+  .loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+    font-size: 1.2rem;
+  }
+
+  /* 메인 */
+  .main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .main h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.3rem;
+  }
+
+  /* 빈 상태 */
+  .empty {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: white;
+    border-radius: 8px;
+  }
+
+  .empty p {
+    color: #999;
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .btn-add-large {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
+  .btn-add-large:hover {
+    background: #5568d3;
+  }
+
+  /* 메뉴 그리드 */
+  .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+  }
+
+  .menu-card {
+    background: white;
+    border: 2px solid #eee;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s;
+  }
+
+  .menu-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #667eea;
+  }
+
+  .menu-top {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
   }
 
-  .restaurant-icon {
+  .emoji {
     font-size: 2.5rem;
   }
 
-  .restaurant-info h3 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #333;
-    margin: 0 0 4px 0;
-  }
-
-  .category-badge {
-    background: #ff9800;
+  .btn-delete {
+    background: #ff6b6b;
     color: white;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
-  .restaurant-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .icon-btn {
-    background: #f5f5f5;
     border: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    font-size: 1.2rem;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
     cursor: pointer;
-    transition: all 0.3s;
+    font-size: 0.9rem;
+  }
+
+  .btn-delete:hover {
+    background: #ff5252;
+  }
+
+  .menu-card h3 {
+    margin: 0.5rem 0;
+    font-size: 1.1rem;
+  }
+
+  .price {
+    font-size: 1.2rem;
+    color: #667eea;
+    font-weight: 700;
+    margin: 0.5rem 0;
+  }
+
+  .restaurant {
+    font-size: 0.85rem;
+    color: #666;
+    margin: 0;
+  }
+
+  /* 모달 */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 1000;
   }
 
-  .icon-btn:hover {
-    background: #e0e0e0;
-  }
-
-  .icon-btn.danger {
-    color: #f44336;
-  }
-
-  .icon-btn.danger:hover {
-    background: #ffebee;
-  }
-
-  .icon-btn.sm {
-    width: 28px;
-    height: 28px;
-    font-size: 1rem;
-  }
-
-  .menus-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .menu-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
+  .modal {
     background: white;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
   }
 
-  .menu-icon {
-    font-size: 1.8rem;
+  .modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #999;
   }
 
-  .menu-details {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .menu-name {
-    font-size: 1.1rem;
-    font-weight: 600;
+  .modal-close:hover {
     color: #333;
   }
 
-  .menu-price {
-    font-size: 0.95rem;
-    color: #ff6b35;
-    font-weight: 600;
+  .modal h2 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.5rem;
   }
 
-  .menu-actions {
-    display: flex;
-    gap: 6px;
-    align-items: center;
+  /* 폼 */
+  .form-group {
+    margin-bottom: 1.5rem;
   }
 
-  .recommend-btn {
-    background: #f5f5f5;
-    border: none;
-    width: 32px;
-    height: 32px;
+  .form-group label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #eee;
     border-radius: 6px;
-    font-size: 1.1rem;
+    font-size: 1rem;
+  }
+
+  .form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  /* 이모지 그리드 */
+  .emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.5rem;
+  }
+
+  .emoji-btn {
+    padding: 0.75rem;
+    font-size: 1.8rem;
+    border: 2px solid #eee;
+    background: white;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s;
-    opacity: 0.3;
+    transition: all 0.2s;
   }
 
-  .recommend-btn.active {
-    opacity: 1;
-    background: #fff3cd;
-  }
-
-  .recommend-btn:hover {
-    opacity: 1;
+  .emoji-btn:hover {
     transform: scale(1.1);
   }
 
-  .empty-text {
-    text-align: center;
-    color: #999;
-    padding: 20px;
-    font-size: 0.95rem;
+  .emoji-btn.active {
+    border-color: #667eea;
+    background: #f0f4ff;
   }
 
-  .empty-section {
-    text-align: center;
-    color: #999;
-    padding: 40px;
-    font-size: 1.1rem;
-  }
-
-  .address-list, .payment-list {
+  /* 폼 액션 */
+  .form-actions {
     display: flex;
-    flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
+    margin-top: 2rem;
   }
 
-  .address-item, .payment-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    border: 2px solid #eee;
-  }
-
-  .address-item.default, .payment-item.default {
-    border-color: #4caf50;
-    background: #f1f8f4;
-  }
-
-  .default-badge {
-    background: #4caf50;
-    color: white;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin-left: 8px;
-  }
-
-  .address-actions, .payment-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .small-btn {
-    background: #2196f3;
-    color: white;
+  .btn-cancel,
+  .btn-submit {
+    flex: 1;
+    padding: 0.75rem;
     border: none;
-    padding: 6px 12px;
     border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 1rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.3s;
   }
 
-  .small-btn:hover {
-    background: #1976d2;
+  .btn-cancel {
+    background: #f5f5f5;
+    color: #666;
   }
 
-  .payment-type {
-    background: #e3f2fd;
-    color: #1976d2;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin-right: 8px;
+  .btn-cancel:hover {
+    background: #e0e0e0;
+  }
+
+  .btn-submit {
+    background: #667eea;
+    color: white;
+  }
+
+  .btn-submit:hover:not(:disabled) {
+    background: #5568d3;
+  }
+
+  .btn-submit:disabled {
+    background: #ccc;
+    cursor: not-allowed;
   }
 </style>
