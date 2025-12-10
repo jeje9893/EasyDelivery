@@ -1088,6 +1088,12 @@
 
       <!-- 추천 메뉴 탭 - 랜덤 추천 메뉴 -->
       {#if menuTab === '추천 메뉴'}
+        <div class="refresh-section">
+          <button class="refresh-btn" on:click={selectRandomRecommendedMenus}>
+            🔄 새로운 추천 메뉴 보기
+          </button>
+        </div>
+        
         <div class="recommended-grid" in:fade={{ duration: 300 }}>
           {#each randomRecommendedMenus as menu, idx}
             <button
@@ -1465,6 +1471,39 @@
     background: #ffcc00;
     color: white;
     box-shadow: 0 2px 8px rgba(255,204,0,0.18);
+  }
+
+  /* 새로고침 버튼 섹션 */
+  .refresh-section {
+    display: flex;
+    justify-content: center;
+    margin: 0 20px 20px 20px;
+  }
+
+  .refresh-btn {
+    background: linear-gradient(135deg, #ffcc00 0%, #ff9800 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .refresh-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 152, 0, 0.5);
+  }
+
+  .refresh-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 3px 8px rgba(255, 152, 0, 0.4);
   }
 
   /* ---------- 추천 메뉴 그리드 (2x2) */
@@ -2180,85 +2219,28 @@
 
   /* 모바일 반응형 */
   @media (max-width: 768px) {
+    .refresh-section {
+      margin: 0 16px 16px 16px;
+    }
+
+    .refresh-btn {
+      font-size: 1rem;
+      padding: 10px 20px;
+    }
+
     /* ...existing code... */
-
-    .footer-cart {
-      max-width: 92%;
-      min-height: 54px;
-    }
-
-    .footer-cart.order-mode {
-      min-height: 54px;
-      padding: 12px 24px;
-    }
-
-    .footer-cart.order-mode .cart-text {
-      font-size: 0.9rem;
-    }
-
-    .footer-cart.order-mode .cart-total {
-      font-size: 1.25rem;
-    }
-
-    .footer-cart.order-mode .cart-icon {
-      font-size: 1.6rem;
-    }
-
-    .cart-text {
-      font-size: 0.9rem;
-    }
-
-    .cart-total {
-      font-size: 1.25rem;
-    }
-
-    .ai-modal-content {
-      width: 95%;
-      height: 550px;
-    }
   }
 
   @media (max-width: 480px) {
+    .refresh-section {
+      margin: 0 12px 12px 12px;
+    }
+
+    .refresh-btn {
+      font-size: 0.95rem;
+      padding: 9px 18px;
+    }
+
     /* ...existing code... */
-
-    .footer-cart {
-      max-width: 95%;
-      min-height: 52px;
-      padding: 10px 20px;
-    }
-
-    .footer-cart.order-mode {
-      min-height: 52px;
-      padding: 10px 20px;
-    }
-
-    .footer-cart.order-mode .cart-text {
-      font-size: 0.85rem;
-    }
-
-    .footer-cart.order-mode .cart-total {
-      font-size: 1.2rem;
-    }
-
-    .footer-cart.order-mode .cart-icon {
-      font-size: 1.5rem;
-    }
-
-    .cart-text {
-      font-size: 0.85rem;
-    }
-
-    .cart-total {
-      font-size: 1.2rem;
-    }
-
-    .cart-icon {
-      font-size: 1.6rem;
-    }
-
-    .ai-modal-content {
-      width: 95%;
-      height: 500px;
-    }
   }
 </style>
