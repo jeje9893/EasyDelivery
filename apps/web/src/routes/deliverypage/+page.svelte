@@ -151,6 +151,9 @@
   let voiceChatHistory: { role: 'user' | 'ai'; message: string; timestamp: number }[] = [];
   let isListening = false;
   let aiSpeechSynthesis: SpeechSynthesisUtterance | null = null;
+  let currentRecognition: any = null;
+  let isProcessing = false;
+  let messageIdCounter = 0; // 고유 ID 카운터 추가
 
   // 랜덤 추천 메뉴 4개 선택 상태
   let randomRecommendedMenus: RecommendedMenu[] = [];
@@ -494,14 +497,39 @@
   }
 
   function closeAIVoiceMode() {
+    console.log('🚪 음성 주문 모달 닫기');
+    
+    // 처리 중 상태 초기화
+    isProcessing = false;
+    
+    // 음성 인식 중지
+    if (currentRecognition) {
+      try {
+        currentRecognition.abort(); // stop 대신 abort 사용
+      } catch (e) {
+        console.log('음성 인식 정지 중 오류:', e);
+      }
+      currentRecognition = null;
+    }
+    
+    // TTS 중지
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
     showAIVoiceModal = false;
     voiceChatHistory = [];
-    stopListening();
+    isListening = false;
   }
 
   function startAIGreeting() {
     const greeting = "안녕하세요! 무엇을 주문하고 싶으신가요? 식당 이름이나 메뉴 이름을 말씀해주세요.";
-    voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: greeting, timestamp: Date.now() }];
+    messageIdCounter++;
+    voiceChatHistory = [...voiceChatHistory, { 
+      role: 'ai', 
+      message: greeting, 
+      timestamp: Date.now() + messageIdCounter 
+    }];
     console.log('✅ AI 인사 추가:', voiceChatHistory);
     speakAI(greeting);
     setTimeout(() => startListening(), 2000);
@@ -513,56 +541,108 @@
       return;
     }
 
+    // 이미 처리 중이면 시작하지 않음
+    if (isProcessing) {
+      console.log('⏸️ 이미 처리 중이므로 음성 인식을 시작하지 않습니다.');
+      return;
+    }
+
+    // 기존 인식 중지
+    if (currentRecognition) {
+      try {
+        currentRecognition.abort();
+      } catch (e) {
+        console.log('기존 인식 중지:', e);
+      }
+      currentRecognition = null;
+    }
+
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
     recognition.continuous = false;
     recognition.interimResults = false;
 
+    currentRecognition = recognition;
     isListening = true;
     console.log('🎤 음성 인식 시작');
 
     // 30초 타임아웃 설정
     const timeout = setTimeout(() => {
-      recognition.stop();
-      isListening = false;
-      const timeoutMsg = "응답이 없어서 종료합니다. 다시 시도하시려면 🎤 버튼을 눌러주세요.";
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: timeoutMsg, timestamp: Date.now() }];
-      console.log('⏰ 타임아웃 메시지 추가:', voiceChatHistory);
-      speakAI(timeoutMsg);
+      if (currentRecognition === recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {
+          console.log('타임아웃 정지 오류:', e);
+        }
+        isListening = false;
+        currentRecognition = null;
+        isProcessing = false;
+        
+        const timeoutMsg = "응답이 없어서 종료합니다. 다시 시도하시려면 🎤 버튼을 눌러주세요.";
+        voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: timeoutMsg, timestamp: Date.now() }];
+        console.log('⏰ 타임아웃 메시지 추가:', voiceChatHistory);
+        speakAI(timeoutMsg);
+      }
     }, 30000);
 
     recognition.onresult = (event: any) => {
       clearTimeout(timeout);
+      
+      // 이미 처리 중이면 무시
+      if (isProcessing) {
+        console.log('⏸️ 이미 처리 중이므로 결과를 무시합니다.');
+        return;
+      }
+      
       const transcript = event.results[0][0].transcript;
       console.log('🎤 사용자 입력:', transcript);
       
-      // 사용자 메시지 즉시 추가 및 강제 업데이트
+      isProcessing = true;
+      isListening = false;
+      currentRecognition = null;
+      
+      // 사용자 메시지 즉시 추가
       const userMessage = { role: 'user' as const, message: transcript, timestamp: Date.now() };
       voiceChatHistory = [...voiceChatHistory, userMessage];
       console.log('✅ 사용자 메시지 추가:', voiceChatHistory);
       
-      isListening = false;
-      
-      // 약간의 딜레이 후 처리 (UI 업데이트 보장)
+      // 처리 시작
       setTimeout(() => {
         processUserInput(transcript);
-      }, 100);
+      }, 300); // 300ms 딜레이 추가
     };
 
     recognition.onerror = (event: any) => {
       clearTimeout(timeout);
       console.error('❌ 음성 인식 오류:', event.error);
       isListening = false;
+      isProcessing = false;
+      
+      if (currentRecognition === recognition) {
+        currentRecognition = null;
+      }
     };
 
     recognition.onend = () => {
       clearTimeout(timeout);
-      isListening = false;
+      if (isListening) {
+        isListening = false;
+      }
+      if (currentRecognition === recognition) {
+        currentRecognition = null;
+      }
       console.log('🎤 음성 인식 종료');
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error('❌ 음성 인식 시작 오류:', e);
+      isListening = false;
+      isProcessing = false;
+      currentRecognition = null;
+    }
   }
 
   function stopListening() {
@@ -581,7 +661,6 @@
 
   function processUserInput(userInput: string) {
     console.log('🔍 processUserInput 시작:', userInput);
-    const lowerInput = userInput.toLowerCase();
     
     // 1. 보호자가 설정한 식당 메뉴 검색
     let foundMenu: Menu | null = null;
@@ -608,7 +687,6 @@
       if (recommendedMenu) {
         console.log('✅ 추천 메뉴 목록에서 발견:', recommendedMenu.menu);
         
-        // 추천 메뉴를 Menu 타입으로 변환
         foundMenu = {
           id: recommendedMenu.id,
           name: recommendedMenu.menu,
@@ -617,10 +695,8 @@
           image: recommendedMenu.emoji
         };
 
-        // 해당 식당이 이미 있는지 확인
         foundRestaurant = restaurants.find((r: Restaurant) => r.name === recommendedMenu.store);
 
-        // 없으면 임시 식당 객체 생성 (주문 시 실제로 추가됨)
         if (!foundRestaurant) {
           const tempId = Math.max(0, ...restaurants.map(r => r.id)) + 1;
           foundRestaurant = {
@@ -636,12 +712,10 @@
 
     // 3. 식당 검색 (메뉴를 못 찾은 경우)
     if (!foundRestaurant) {
-      // 보호자 설정 식당에서 검색
       foundRestaurant = restaurants.find((r: Restaurant) => 
         r.name.includes(userInput) || userInput.includes(r.name)
       ) || null;
 
-      // 추천 메뉴 목록에서 식당 검색
       if (!foundRestaurant) {
         const recommendedStore = recommendedMenus.find((rm: RecommendedMenu) => 
           rm.store.includes(userInput) || userInput.includes(rm.store)
@@ -664,15 +738,18 @@
     let response = '';
 
     if (foundMenu && foundRestaurant) {
-      // 클로저 내부에서 사용할 변수를 const로 고정
       const confirmedMenu = foundMenu;
       const confirmedRestaurant = foundRestaurant;
       const isNewRestaurant = !restaurants.find(r => r.id === confirmedRestaurant.id);
       
       response = `${confirmedRestaurant.name}의 ${confirmedMenu.name}을 찾았습니다. ${confirmedMenu.price.toLocaleString()}원입니다. 주문하시겠습니까?`;
       
-      // AI 응답 즉시 추가
-      const aiMessage = { role: 'ai' as const, message: response, timestamp: Date.now() };
+      messageIdCounter++;
+      const aiMessage = { 
+        role: 'ai' as const, 
+        message: response, 
+        timestamp: Date.now() + messageIdCounter 
+      };
       voiceChatHistory = [...voiceChatHistory, aiMessage];
       console.log('✅ AI 응답 추가 (메뉴 찾음):', voiceChatHistory);
       
@@ -680,106 +757,224 @@
       
       // 사용자 응답 대기
       setTimeout(() => {
-        const confirmRecognition = new ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition)();
+        // 기존 인식 중지
+        if (currentRecognition) {
+          try {
+            currentRecognition.abort();
+          } catch (e) {
+            console.log('기존 확인 인식 중지:', e);
+          }
+        }
+
+        const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+        const confirmRecognition = new SpeechRecognition();
         confirmRecognition.lang = 'ko-KR';
         confirmRecognition.continuous = false;
         confirmRecognition.interimResults = false;
         
-        // 15초 타임아웃
+        currentRecognition = confirmRecognition;
+        isListening = true;
+        isProcessing = false;
+        console.log('🎤 주문 확인 음성 인식 시작');
+        
+        let hasProcessed = false; // 중복 처리 방지 플래그
+        
+        // 20초 타임아웃
         const confirmTimeout = setTimeout(() => {
-          confirmRecognition.stop();
-          const timeoutMsg = "응답이 없어 주문을 취소합니다.";
-          voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: timeoutMsg, timestamp: Date.now() }];
-          console.log('⏰ 확인 타임아웃:', voiceChatHistory);
-          speakAI(timeoutMsg);
+          if (hasProcessed) return;
+          hasProcessed = true;
           
-          // 타임아웃 후 자동으로 모달 닫기
-          setTimeout(() => {
-            closeAIVoiceMode();
-          }, 2000);
-        }, 15000);
+          if (currentRecognition === confirmRecognition) {
+            try {
+              confirmRecognition.abort();
+            } catch (e) {
+              console.log('확인 타임아웃 정지 오류:', e);
+            }
+            
+            isListening = false;
+            isProcessing = false;
+            currentRecognition = null;
+            
+            messageIdCounter++;
+            const timeoutMsg = "응답이 없어 주문을 취소합니다.";
+            voiceChatHistory = [...voiceChatHistory, { 
+              role: 'ai', 
+              message: timeoutMsg, 
+              timestamp: Date.now() + messageIdCounter 
+            }];
+            console.log('⏰ 확인 타임아웃:', voiceChatHistory);
+            speakAI(timeoutMsg);
+            
+            setTimeout(() => {
+              closeAIVoiceMode();
+            }, 2000);
+          }
+        }, 20000);
         
         confirmRecognition.onresult = (event: any) => {
+          if (hasProcessed) {
+            console.log('⏸️ 이미 처리된 응답 무시');
+            return;
+          }
+          hasProcessed = true;
           clearTimeout(confirmTimeout);
+          
+          isListening = false;
+          currentRecognition = null;
+          
           const confirmTranscript = event.results[0][0].transcript;
           console.log('✅ 확인 응답:', confirmTranscript);
           
-          // 확인 응답 즉시 추가
+          // 사용자 응답 추가
+          messageIdCounter++;
           voiceChatHistory = [...voiceChatHistory, { 
             role: 'user', 
             message: confirmTranscript, 
-            timestamp: Date.now() 
+            timestamp: Date.now() + messageIdCounter 
           }];
           console.log('✅ 확인 응답 추가:', voiceChatHistory);
           
-          const lowerConfirm = confirmTranscript.toLowerCase();
-          
-          // 주문 의사를 나타내는 키워드 확장
-          if (lowerConfirm.includes('주문') || lowerConfirm.includes('네') || 
-              lowerConfirm.includes('예') || lowerConfirm.includes('응') ||
-              lowerConfirm.includes('맞') || lowerConfirm.includes('좋') || 
-              lowerConfirm.includes('그래') || lowerConfirm.includes('할게') ||
-              lowerConfirm.includes('해') || lowerConfirm.includes('시켜') ||
-              lowerConfirm.includes('담') || lowerConfirm.includes('넣')) {
-            // 주문 확정 - 즉시 장바구니에 담기
-            console.log('🎉 주문 확정! 장바구니 담기 시작');
+          // UI 업데이트를 위한 약간의 딜레이
+          setTimeout(() => {
+            const lowerConfirm = confirmTranscript.toLowerCase();
             
-            // 새 식당인 경우 restaurants 배열에 추가
-            if (isNewRestaurant) {
-              restaurants = [...restaurants, confirmedRestaurant];
-              console.log('➕ 새 식당 추가 (추천 메뉴):', confirmedRestaurant.name);
+            // 긍정 키워드
+            const positiveKeywords = ['주문', '네', '예', '응', '맞', '좋', '그래', '할게', '해', 
+                                       '시켜', '담', '넣', '네네', '어', '음', '예예', '확인', 
+                                       '됐', '됩니다', '요', '가능', '오케이', '오키', 'ok'];
+            
+            const hasPositiveKeyword = positiveKeywords.some(keyword => lowerConfirm.includes(keyword));
+            
+            // 부정 키워드
+            const negativeKeywords = ['아니', '안', '취소', '싫', '다시', '아뇨', '아니요'];
+            const hasNegativeKeyword = negativeKeywords.some(keyword => lowerConfirm.includes(keyword));
+            
+            if (hasPositiveKeyword && !hasNegativeKeyword) {
+              console.log('🎉 주문 확정! 장바구니 담기 시작');
+              
+              if (isNewRestaurant) {
+                restaurants = [...restaurants, confirmedRestaurant];
+                console.log('➕ 새 식당 추가 (추천 메뉴):', confirmedRestaurant.name);
+              }
+              
+              selectedRestaurant = confirmedRestaurant;
+              selectedCategory = confirmedRestaurant.category;
+              addToCart(confirmedMenu);
+              
+              messageIdCounter++;
+              const confirmMsg = `${confirmedMenu.name}을 장바구니에 담았습니다!`;
+              voiceChatHistory = [...voiceChatHistory, { 
+                role: 'ai', 
+                message: confirmMsg, 
+                timestamp: Date.now() + messageIdCounter 
+              }];
+              console.log('✅ 주문 확정 메시지 추가:', voiceChatHistory);
+              speakAI(confirmMsg);
+              
+              isProcessing = false;
+              setTimeout(() => {
+                console.log('🚪 음성 주문 모달 닫기');
+                closeAIVoiceMode();
+              }, 1500);
+            } else {
+              console.log('❌ 주문 취소됨');
+              messageIdCounter++;
+              const cancelMsg = '주문이 취소되었습니다. 다른 메뉴를 찾아드릴까요?';
+              voiceChatHistory = [...voiceChatHistory, { 
+                role: 'ai', 
+                message: cancelMsg, 
+                timestamp: Date.now() + messageIdCounter 
+              }];
+              console.log('❌ 주문 취소 메시지 추가:', voiceChatHistory);
+              speakAI(cancelMsg);
+              
+              isProcessing = false;
+              setTimeout(() => startListening(), 2000);
             }
-            
-            selectedRestaurant = confirmedRestaurant;
-            selectedCategory = confirmedRestaurant.category;
-            addToCart(confirmedMenu);
-            
-            const confirmMsg = `${confirmedMenu.name}을 장바구니에 담았습니다!`;
-            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: confirmMsg, timestamp: Date.now() }];
-            console.log('✅ 주문 확정 메시지 추가:', voiceChatHistory);
-            speakAI(confirmMsg);
-            
-            // 1.5초 후 모달 닫기
-            setTimeout(() => {
-              console.log('🚪 음성 주문 모달 닫기');
-              closeAIVoiceMode();
-            }, 1500);
-          } else {
-            // 주문 취소
-            console.log('❌ 주문 취소됨');
-            const cancelMsg = '주문이 취소되었습니다. 다른 메뉴를 찾아드릴까요?';
-            voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: cancelMsg, timestamp: Date.now() }];
-            console.log('❌ 주문 취소 메시지 추가:', voiceChatHistory);
-            speakAI(cancelMsg);
-            setTimeout(() => startListening(), 2000);
-          }
+          }, 200); // UI 업데이트를 위한 딜레이
         };
         
         confirmRecognition.onerror = (event: any) => {
+          if (hasProcessed) return;
+          hasProcessed = true;
           clearTimeout(confirmTimeout);
+          
+          isListening = false;
+          isProcessing = false;
+          
+          if (currentRecognition === confirmRecognition) {
+            currentRecognition = null;
+          }
+          
           console.error('❌ 확인 인식 오류:', event.error);
           
+          messageIdCounter++;
           const errorMsg = "음성 인식에 문제가 있습니다. 다시 시도해주세요.";
-          voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: errorMsg, timestamp: Date.now() }];
+          voiceChatHistory = [...voiceChatHistory, { 
+            role: 'ai', 
+            message: errorMsg, 
+            timestamp: Date.now() + messageIdCounter 
+          }];
           speakAI(errorMsg);
           
           setTimeout(() => startListening(), 2000);
         };
         
-        confirmRecognition.start();
-        console.log('🎤 주문 확인 음성 인식 시작');
-      }, 1500);
+        confirmRecognition.onend = () => {
+          console.log('🎤 확인 음성 인식 종료');
+          if (!hasProcessed && isListening && currentRecognition === confirmRecognition) {
+            isListening = false;
+            currentRecognition = null;
+          }
+        };
+        
+        try {
+          confirmRecognition.start();
+        } catch (e) {
+          if (hasProcessed) return;
+          hasProcessed = true;
+          
+          console.error('❌ 확인 인식 시작 오류:', e);
+          clearTimeout(confirmTimeout);
+          isListening = false;
+          isProcessing = false;
+          currentRecognition = null;
+          
+          messageIdCounter++;
+          const errorMsg = "음성 인식 시작에 실패했습니다.";
+          voiceChatHistory = [...voiceChatHistory, { 
+            role: 'ai', 
+            message: errorMsg, 
+            timestamp: Date.now() + messageIdCounter 
+          }];
+          speakAI(errorMsg);
+        }
+      }, 2000);
     } else if (foundRestaurant) {
       response = `${foundRestaurant.name}을 찾았습니다. 어떤 메뉴를 원하시나요?`;
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response, timestamp: Date.now() }];
+      messageIdCounter++;
+      voiceChatHistory = [...voiceChatHistory, { 
+        role: 'ai', 
+        message: response, 
+        timestamp: Date.now() + messageIdCounter 
+      }];
       console.log('✅ AI 응답 추가 (식당 찾음):', voiceChatHistory);
       speakAI(response);
+      
+      isProcessing = false;
       setTimeout(() => startListening(), 2000);
     } else {
       response = "죄송합니다. 찾는 메뉴나 식당이 없습니다. 다시 한 번 말씀해주세요.";
-      voiceChatHistory = [...voiceChatHistory, { role: 'ai', message: response, timestamp: Date.now() }];
+      messageIdCounter++;
+      voiceChatHistory = [...voiceChatHistory, { 
+        role: 'ai', 
+        message: response, 
+        timestamp: Date.now() + messageIdCounter 
+      }];
       console.log('❌ AI 응답 추가 (못 찾음):', voiceChatHistory);
       speakAI(response);
+      
+      isProcessing = false;
       setTimeout(() => startListening(), 2000);
     }
   }
@@ -1030,16 +1225,19 @@
 
   <!-- AI 음성 주문 모달 -->
   {#if showAIVoiceModal}
-    <div class="ai-modal-overlay" transition:fade on:click={closeAIVoiceMode}>
+    <div class="ai-modal-overlay" transition:fade on:click|self={closeAIVoiceMode}>
       <div class="ai-modal-content" on:click|stopPropagation transition:slide>
         <button class="ai-close-btn" on:click={closeAIVoiceMode}>✕</button>
         
         <div class="ai-header">
           <h2>🤖 AI 음성 주문</h2>
-          <div class="ai-status" class:listening={isListening}>
+          <div class="ai-status" class:listening={isListening} class:processing={isProcessing}>
             {#if isListening}
               <span class="listening-dot"></span>
               <span>듣는 중...</span>
+            {:else if isProcessing}
+              <span class="processing-spinner"></span>
+              <span>처리 중...</span>
             {:else}
               <span>준비 완료</span>
             {/if}
@@ -1061,9 +1259,15 @@
           <button 
             class="listen-btn" 
             on:click={startListening}
-            disabled={isListening}
+            disabled={isListening || isProcessing}
           >
             🎤 다시 듣기
+          </button>
+          <button 
+            class="close-modal-btn" 
+            on:click={closeAIVoiceMode}
+          >
+            닫기
           </button>
         </div>
       </div>
@@ -1713,10 +1917,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.3s;
   }
 
   .ai-close-btn:hover {
     color: #333;
+    transform: scale(1.1);
   }
 
   .ai-header {
@@ -1747,17 +1953,17 @@
     color: #4caf50;
   }
 
-  .listening-dot {
+  .processing-spinner {
     width: 8px;
     height: 8px;
-    background: #4caf50;
+    background: #ff9800;
     border-radius: 50%;
-    animation: pulse-dot 1.5s infinite;
+    animation: spin 1s linear infinite;
   }
 
-  @keyframes pulse-dot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 
   .ai-chat-box {
@@ -1811,7 +2017,7 @@
   }
 
   .listen-btn {
-    flex: 1;
+    flex: 2;
     background: #4caf50;
     color: white;
     border: none;
@@ -1832,5 +2038,24 @@
   .listen-btn:disabled {
     background: #ccc;
     cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .close-modal-btn {
+    flex: 1;
+    background: #f5f5f5;
+    color: #666;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .close-modal-btn:hover {
+    background: #e0e0e0;
+    color: #333;
   }
 </style>
